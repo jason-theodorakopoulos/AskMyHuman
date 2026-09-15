@@ -27,7 +27,7 @@ class FakeAskHumanUseCase(AskHumanUseCase):
     async def ask(self, principal: Principal, request: AskHumanRequest) -> AskHumanResult:
         self.requests.append((principal, request))
         if self.result is None:
-            self.result = AskHumanResult(
+            return AskHumanResult(
                 requestId=request.idempotency_key,
                 status=RequestStatus.EXPIRED,
                 outcome=Outcome.DEADLINE_EXCEEDED,

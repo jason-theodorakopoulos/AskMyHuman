@@ -36,7 +36,7 @@ def main() -> int:
         if args.check:
             mismatch |= not path.is_file() or path.read_text() != expected
         else:
-            path.parent.mkdir(exist_ok=True)
+            path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(expected)
     if mismatch:
         print("Generated JSON Schemas differ; run scripts/export_schemas.py.")

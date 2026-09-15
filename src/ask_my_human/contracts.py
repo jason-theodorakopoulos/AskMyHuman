@@ -1,10 +1,12 @@
 """Public request, result, and error contracts."""
 
 from enum import StrEnum
-from typing import Annotated, Literal
+from typing import Annotated
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
+
+from ask_my_human.errors import ErrorCode
 
 Prompt = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=2000)]
 Answer = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=4000)]
@@ -78,14 +80,6 @@ class ExecutionError(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     request_id: UUID | None = Field(default=None, alias="requestId")
-    code: Literal[
-        "invalid_request",
-        "unauthenticated",
-        "forbidden",
-        "idempotency_conflict",
-        "rate_limited",
-        "dependency_failure",
-        "internal",
-    ]
+    code: ErrorCode
     message: Message
     retryable: bool

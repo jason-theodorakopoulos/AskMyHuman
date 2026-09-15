@@ -42,7 +42,7 @@ dev = [
 packages = ["src/ask_my_human"]
 
 [tool.pytest.ini_options]
-addopts = "--strict-markers"
+addopts = "--strict-markers -m 'not live'"
 asyncio_mode = "auto"
 markers = ["live: requires live Azure resources"]
 testpaths = ["tests"]

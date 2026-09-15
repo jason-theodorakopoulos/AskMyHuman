@@ -29,7 +29,7 @@ def result_for_event(event: CallEvent) -> AskHumanResult:
             requestId=event.request_id,
             status=RequestStatus.RESPONDED,
             outcome=outcome,
-            answer=answer,
+            answer=answer if outcome is Outcome.ANSWERED else None,
         )
     return AskHumanResult(
         requestId=event.request_id,

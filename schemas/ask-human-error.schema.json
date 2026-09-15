@@ -1,8 +1,6 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "additionalProperties": false,
-  "properties": {
-    "code": {
+  "$defs": {
+    "ErrorCode": {
       "enum": [
         "invalid_request",
         "unauthenticated",
@@ -12,8 +10,15 @@
         "dependency_failure",
         "internal"
       ],
-      "title": "Code",
+      "title": "ErrorCode",
       "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "code": {
+      "$ref": "#/$defs/ErrorCode"
     },
     "message": {
       "maxLength": 256,

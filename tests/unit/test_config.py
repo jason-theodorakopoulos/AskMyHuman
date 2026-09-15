@@ -23,7 +23,7 @@ def settings(**overrides: object) -> Settings:
 
 def test_settings_redact_database_url() -> None:
     configured = settings()
-    assert "password" not in repr(configured)
+    assert "sensitive-test-credential" not in repr(configured)
     assert configured.database_url.get_secret_value().endswith("/askmyhuman")
 
 

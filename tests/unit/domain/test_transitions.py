@@ -43,6 +43,13 @@ def test_answered_event_normalizes_text() -> None:
     assert result.answer == "Stop deployment."
 
 
+def test_approval_event_ignores_callback_text() -> None:
+    result = result_for_event(
+        CallEvent(request_id=uuid4(), event_type=CallEventType.APPROVED, answer="irrelevant")
+    )
+    assert result.answer is None
+
+
 def test_terminal_request_cannot_transition_again() -> None:
     request_id = uuid4()
     request = HumanRequest(
