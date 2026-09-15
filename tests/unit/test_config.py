@@ -37,3 +37,24 @@ def test_settings_require_e164_numbers(field: str) -> None:
 def test_settings_require_work_cutoff_before_deadline() -> None:
     with pytest.raises(ValidationError, match="work_cutoff_seconds"):
         settings(work_cutoff_seconds=210)
+
+
+def test_settings_parse_comma_separated_allow_lists() -> None:
+    configured = settings(
+        authorized_agent_app_ids="agent-a, agent-b",
+        mcp_allowed_hosts="one.example.com, two.example.com",
+    )
+    assert configured.authorized_agent_app_ids == ("agent-a", "agent-b")
+    assert configured.mcp_allowed_hosts == ("one.example.com", "two.example.com")
+
+
+@pytest.mark.parametrize(
+    ("field", "message"),
+    [
+        ("authorized_agent_app_ids", "authorized_agent_app_ids"),
+        ("mcp_allowed_hosts", "mcp_allowed_hosts"),
+    ],
+)
+def test_settings_require_nonempty_allow_lists(field: str, message: str) -> None:
+    with pytest.raises(ValidationError, match=message):
+        settings(**{field: ()})

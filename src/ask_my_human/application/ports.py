@@ -7,7 +7,13 @@ from uuid import UUID
 from ask_my_human.contracts import AskHumanRequest, AskHumanResult
 from ask_my_human.domain.models import CallEvent, HumanRequest, Principal
 
-Admission = Literal["created", "joined", "replayed", "conflict", "pending_exists"]
+Admission = Literal[
+    "created",
+    "joined_pending",
+    "replayed",
+    "conflict",
+    "pending_admission_lost",
+]
 
 
 class AskHumanUseCase(Protocol):
@@ -24,7 +30,7 @@ class RequestRepository(Protocol):
         request_hash: str,
         expires_at: datetime,
     ) -> tuple[Admission, HumanRequest]:
-        """Return created, joined pending, terminal replay, conflict, or pending admission loss."""
+        """Return created, joined-pending, replayed, conflict, or admission-loss."""
 
     async def attach_call_id(self, request_id: UUID, call_id: str) -> bool: ...
 

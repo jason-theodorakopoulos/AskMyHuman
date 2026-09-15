@@ -22,8 +22,7 @@ def result_for_event(event: CallEvent) -> AskHumanResult:
     """Map one typed callback to a valid public terminal result."""
     if event.event_type in _RESPONDED:
         outcome = _RESPONDED[event.event_type]
-        answer = event.answer.strip() if event.answer else None
-        answer = answer or None
+        answer = (event.answer or "").strip() or None
         if outcome is Outcome.ANSWERED and answer is None:
             raise ValueError("an answered event requires nonblank text")
         return AskHumanResult(
@@ -40,7 +39,9 @@ def result_for_event(event: CallEvent) -> AskHumanResult:
 
 
 def complete(request: HumanRequest, event: CallEvent) -> AskHumanResult | None:
-    """Return the first terminal result, or None once the request is terminal."""
-    if request.state is not RequestState.PENDING or event.request_id != request.request_id:
+    """Return the first terminal result, None for terminal requests, or reject unrelated events."""
+    if event.request_id != request.request_id:
+        raise ValueError("event does not belong to request")
+    if request.state is not RequestState.PENDING:
         return None
     return result_for_event(event)

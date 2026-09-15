@@ -85,6 +85,5 @@ def test_request_ignores_event_for_another_request() -> None:
         created_at=datetime.now(UTC),
         expires_at=datetime.now(UTC),
     )
-    assert (
-        complete(request, CallEvent(request_id=uuid4(), event_type=CallEventType.APPROVED)) is None
-    )
+    with pytest.raises(ValueError, match="does not belong"):
+        complete(request, CallEvent(request_id=uuid4(), event_type=CallEventType.APPROVED))

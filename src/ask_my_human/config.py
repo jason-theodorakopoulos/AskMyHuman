@@ -39,6 +39,8 @@ class Settings(BaseSettings):
     def validate_timings(self) -> "Settings":
         if self.work_cutoff_seconds >= self.deadline_seconds:
             raise ValueError("work_cutoff_seconds must be less than deadline_seconds")
-        if not self.authorized_agent_app_ids or not self.mcp_allowed_hosts:
-            raise ValueError("authorized agents and MCP allowed hosts must not be empty")
+        if not self.authorized_agent_app_ids:
+            raise ValueError("authorized_agent_app_ids must not be empty")
+        if not self.mcp_allowed_hosts:
+            raise ValueError("mcp_allowed_hosts must not be empty")
         return self

@@ -10,7 +10,7 @@ from ask_my_human.errors import ErrorCode
 
 Prompt = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=2000)]
 Answer = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=4000)]
-Message = Annotated[str, StringConstraints(min_length=1, max_length=256)]
+Message = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=256)]
 
 
 class RequestKind(StrEnum):
