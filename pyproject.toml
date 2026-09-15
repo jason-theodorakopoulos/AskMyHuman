@@ -1,0 +1,68 @@
+[project]
+name = "ask-my-human"
+version = "0.1.0"
+description = "Synchronous human-in-the-loop phone-call service for agents"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "alembic>=1.20,<2",
+  "azure-communication-callautomation>=1.6,<2",
+  "azure-identity>=1.25,<2",
+  "azure-monitor-opentelemetry>=1.8,<2",
+  "fastapi>=0.141,<1",
+  "httpx>=0.28,<1",
+  "mcp>=2.2,<3",
+  "opentelemetry-api>=1.44,<2",
+  "psycopg[binary,pool]>=3.3,<4",
+  "pydantic>=2.12,<3",
+  "pydantic-settings>=2.15,<3",
+  "PyJWT[crypto]>=2.14,<3",
+  "sqlalchemy>=2.0,<3",
+  "uvicorn>=0.53,<1",
+]
+
+[build-system]
+requires = ["hatchling>=1.32,<2"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+  "cryptography>=50,<51",
+  "jsonschema[format]>=4.26,<5",
+  "mcp[cli]>=2.2,<3",
+  "mypy>=2.3,<3",
+  "pytest>=9.1,<10",
+  "pytest-asyncio>=1.4,<2",
+  "pytest-cov>=7.1,<8",
+  "ruff>=0.16,<1",
+  "testcontainers[postgres]>=4.15,<5",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ask_my_human"]
+
+[tool.pytest.ini_options]
+addopts = "--strict-markers -m 'not live'"
+asyncio_mode = "auto"
+markers = ["live: requires live Azure resources"]
+testpaths = ["tests"]
+
+[tool.coverage.run]
+branch = true
+source = ["ask_my_human"]
+
+[tool.coverage.report]
+fail_under = 90
+show_missing = true
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["src", "tests"]

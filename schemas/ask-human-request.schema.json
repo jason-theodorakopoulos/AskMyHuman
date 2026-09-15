@@ -1,0 +1,37 @@
+{
+  "$defs": {
+    "RequestKind": {
+      "enum": [
+        "approval",
+        "input"
+      ],
+      "title": "RequestKind",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "idempotencyKey": {
+      "format": "uuid",
+      "title": "Idempotencykey",
+      "type": "string"
+    },
+    "kind": {
+      "$ref": "#/$defs/RequestKind"
+    },
+    "prompt": {
+      "maxLength": 2000,
+      "minLength": 1,
+      "title": "Prompt",
+      "type": "string"
+    }
+  },
+  "required": [
+    "kind",
+    "prompt",
+    "idempotencyKey"
+  ],
+  "title": "AskHumanRequest",
+  "type": "object"
+}

@@ -1,0 +1,14 @@
+using '../main.bicep'
+
+param location = readEnvironmentVariable('AZURE_LOCATION')
+param containerImage = readEnvironmentVariable('CONTAINER_IMAGE')
+param containerRegistryServer = readEnvironmentVariable('CONTAINER_REGISTRY_SERVER')
+param containerRegistryResourceId = readEnvironmentVariable('CONTAINER_REGISTRY_RESOURCE_ID')
+param postgresAdminPassword = readEnvironmentVariable('POSTGRES_ADMIN_PASSWORD')
+param myMobileNumber = readEnvironmentVariable('MY_MOBILE_NUMBER')
+param acsSourcePhoneNumber = readEnvironmentVariable('ACS_SOURCE_PHONE_NUMBER')
+param entraTenantId = readEnvironmentVariable('ENTRA_TENANT_ID')
+param entraClientId = readEnvironmentVariable('ENTRA_CLIENT_ID')
+param entraClientSecret = readEnvironmentVariable('ENTRA_CLIENT_SECRET')
+param authorizedAgentAppIds = readEnvironmentVariable('AUTHORIZED_AGENT_APP_IDS')
+param existingAcsResourceId = readEnvironmentVariable('EXISTING_ACS_RESOURCE_ID')
