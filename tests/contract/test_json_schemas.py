@@ -13,7 +13,7 @@ from ask_my_human.contracts import (
     RequestStatus,
 )
 
-SCHEMAS = Path("schemas")
+SCHEMAS = Path(__file__).resolve().parents[2] / "schemas"
 
 
 def validate(filename: str, instance: dict[str, object]) -> None:

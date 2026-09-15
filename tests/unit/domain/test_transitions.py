@@ -65,3 +65,18 @@ def test_terminal_request_cannot_transition_again() -> None:
         complete(request, CallEvent(request_id=request_id, event_type=CallEventType.APPROVED))
         is None
     )
+
+
+def test_request_ignores_event_for_another_request() -> None:
+    request = HumanRequest(
+        request_id=uuid4(),
+        principal=Principal(subject_id="subject", application_id="app"),
+        request=AskHumanRequest(kind="approval", prompt="Continue?", idempotencyKey=uuid4()),
+        request_hash="hash",
+        state=RequestState.PENDING,
+        created_at=datetime.now(UTC),
+        expires_at=datetime.now(UTC),
+    )
+    assert (
+        complete(request, CallEvent(request_id=uuid4(), event_type=CallEventType.APPROVED)) is None
+    )

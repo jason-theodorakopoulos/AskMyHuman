@@ -40,6 +40,6 @@ def result_for_event(event: CallEvent) -> AskHumanResult:
 
 def complete(request: HumanRequest, event: CallEvent) -> AskHumanResult | None:
     """Return the first terminal result, or None once the request is terminal."""
-    if request.state is not RequestState.PENDING:
+    if request.state is not RequestState.PENDING or event.request_id != request.request_id:
         return None
     return result_for_event(event)

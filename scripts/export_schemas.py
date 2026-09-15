@@ -29,17 +29,19 @@ def main() -> int:
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args()
     schema_dir = ROOT / "schemas"
-    mismatch = False
+    mismatches: list[str] = []
     for name, model in SCHEMAS.items():
         path = schema_dir / name
         expected = content(model)
         if args.check:
-            mismatch |= not path.is_file() or path.read_text() != expected
+            if not path.is_file() or path.read_text() != expected:
+                mismatches.append(name)
         else:
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(expected)
-    if mismatch:
-        print("Generated JSON Schemas differ; run scripts/export_schemas.py.")
+    if mismatches:
+        names = ", ".join(mismatches)
+        print(f"Generated JSON Schemas differ ({names}); run scripts/export_schemas.py.")
         return 1
     return 0
 
