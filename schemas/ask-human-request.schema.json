@@ -23,6 +23,7 @@
     "prompt": {
       "maxLength": 2000,
       "minLength": 1,
+      "pattern": "\\S",
       "title": "Prompt",
       "type": "string"
     }

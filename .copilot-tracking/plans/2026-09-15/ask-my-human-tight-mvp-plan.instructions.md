@@ -117,13 +117,13 @@ The foundation owner freezes application contracts, then the infrastructure
 integrator freezes Bicep module contracts. They publish one reviewed foundation
 commit before feature branches diverge.
 
-* [ ] Step 0.1: Create the Python 3.12 package, uv dependency baseline, lockfile, and tool configuration.
+* [x] Step 0.1: Create the Python 3.12 package, uv dependency baseline, lockfile, and tool configuration.
   * Details: .copilot-tracking/details/2026-09-15/ask-my-human-tight-mvp-details.md (Lines 55-91)
-* [ ] Step 0.2: Freeze typed configuration, public Pydantic contracts, generated JSON Schemas, and schema drift checks.
+* [x] Step 0.2: Freeze typed configuration, public Pydantic contracts, generated JSON Schemas, and schema drift checks.
   * Details: .copilot-tracking/details/2026-09-15/ask-my-human-tight-mvp-details.md (Lines 92-135)
-* [ ] Step 0.3: Freeze domain states, transitions, the inbound use-case protocol, outbound ports, and deterministic test fakes.
+* [x] Step 0.3: Freeze domain states, transitions, the inbound use-case protocol, outbound ports, and deterministic test fakes.
   * Details: .copilot-tracking/details/2026-09-15/ask-my-human-tight-mvp-details.md (Lines 136-181)
-* [ ] Step 0.4: Freeze Bicep module inputs, outputs, secure-value rules, and external deployment inputs.
+* [x] Step 0.4: Freeze Bicep module inputs, outputs, secure-value rules, and external deployment inputs.
   * Details: .copilot-tracking/details/2026-09-15/ask-my-human-tight-mvp-details.md (Lines 182-216)
 * [ ] Step 0.5: Run contract, domain, configuration, schema, lock, lint, and type validation; publish the foundation commit.
   * Details: .copilot-tracking/details/2026-09-15/ask-my-human-tight-mvp-details.md (Lines 217-236)

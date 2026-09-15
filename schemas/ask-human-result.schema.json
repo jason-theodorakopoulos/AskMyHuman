@@ -26,12 +26,70 @@
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
+  "oneOf": [
+    {
+      "properties": {
+        "answer": {
+          "type": "null"
+        },
+        "outcome": {
+          "enum": [
+            "approved",
+            "rejected"
+          ]
+        },
+        "status": {
+          "const": "responded"
+        }
+      }
+    },
+    {
+      "properties": {
+        "answer": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "pattern": "\\S",
+          "type": "string"
+        },
+        "outcome": {
+          "const": "answered"
+        },
+        "status": {
+          "const": "responded"
+        }
+      },
+      "required": [
+        "answer"
+      ]
+    },
+    {
+      "properties": {
+        "answer": {
+          "type": "null"
+        },
+        "outcome": {
+          "enum": [
+            "no_answer",
+            "busy",
+            "declined",
+            "disconnected",
+            "cancelled",
+            "deadline_exceeded"
+          ]
+        },
+        "status": {
+          "const": "expired"
+        }
+      }
+    }
+  ],
   "properties": {
     "answer": {
       "anyOf": [
         {
           "maxLength": 4000,
           "minLength": 1,
+          "pattern": "\\S",
           "type": "string"
         },
         {

@@ -4,13 +4,29 @@ from enum import StrEnum
 from typing import Annotated
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    field_validator,
+    model_validator,
+)
 
 from ask_my_human.errors import ErrorCode
 
-Prompt = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=2000)]
-Answer = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=4000)]
-Message = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=256)]
+Prompt = Annotated[
+    str,
+    StringConstraints(strip_whitespace=True, min_length=1, max_length=2000, pattern=r"\S"),
+]
+Answer = Annotated[
+    str,
+    StringConstraints(strip_whitespace=True, min_length=1, max_length=4000, pattern=r"\S"),
+]
+Message = Annotated[
+    str,
+    StringConstraints(strip_whitespace=True, min_length=1, max_length=256, pattern=r"\S"),
+]
 
 
 class RequestKind(StrEnum):
@@ -24,6 +40,13 @@ class AskHumanRequest(BaseModel):
     kind: RequestKind
     prompt: Prompt
     idempotency_key: UUID = Field(alias="idempotencyKey")
+
+    @field_validator("prompt", mode="before")
+    @classmethod
+    def validate_wire_prompt_length(cls, value: object) -> object:
+        if isinstance(value, str) and len(value) > 2000:
+            raise ValueError("prompt must not exceed 2000 characters")
+        return value
 
 
 class RequestStatus(StrEnum):

@@ -68,6 +68,47 @@ def test_invalid_result_combination_is_rejected() -> None:
         AskHumanResult(requestId=uuid4(), status=RequestStatus.EXPIRED, outcome=Outcome.APPROVED)
 
 
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"requestId": str(uuid4()), "status": "expired", "outcome": "approved"},
+        {"requestId": str(uuid4()), "status": "responded", "outcome": "no_answer"},
+        {"requestId": str(uuid4()), "status": "responded", "outcome": "answered"},
+        {
+            "requestId": str(uuid4()),
+            "status": "expired",
+            "outcome": "no_answer",
+            "answer": "unexpected",
+        },
+    ],
+)
+def test_result_schema_rejects_invalid_discriminator_combinations(
+    payload: dict[str, object],
+) -> None:
+    with pytest.raises(jsonschema.ValidationError):
+        validate("ask-human-result.schema.json", payload)
+
+
+def test_request_schema_rejects_whitespace_only_prompt() -> None:
+    with pytest.raises(jsonschema.ValidationError):
+        validate(
+            "ask-human-request.schema.json",
+            {"kind": "input", "prompt": "   ", "idempotencyKey": str(uuid4())},
+        )
+
+
+def test_request_model_and_schema_reject_same_overlong_wire_prompt() -> None:
+    payload = {
+        "kind": "input",
+        "prompt": f" {'x' * 2000} ",
+        "idempotencyKey": str(uuid4()),
+    }
+    with pytest.raises(ValueError, match="2000"):
+        AskHumanRequest.model_validate(payload)
+    with pytest.raises(jsonschema.ValidationError):
+        validate("ask-human-request.schema.json", payload)
+
+
 def test_unknown_request_field_is_rejected() -> None:
     with pytest.raises(ValueError):
         AskHumanRequest(kind="input", prompt="Need context", idempotencyKey=uuid4(), extra=True)

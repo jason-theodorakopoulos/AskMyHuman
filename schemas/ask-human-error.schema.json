@@ -23,6 +23,7 @@
     "message": {
       "maxLength": 256,
       "minLength": 1,
+      "pattern": "\\S",
       "title": "Message",
       "type": "string"
     },

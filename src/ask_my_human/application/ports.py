@@ -1,10 +1,17 @@
 """Narrow async application boundaries."""
 
 from datetime import datetime
+from enum import StrEnum
 from typing import Literal, Protocol
 from uuid import UUID
 
-from ask_my_human.contracts import AskHumanRequest, AskHumanResult
+from ask_my_human.contracts import (
+    AskHumanRequest,
+    AskHumanResult,
+    Outcome,
+    RequestKind,
+    RequestStatus,
+)
 from ask_my_human.domain.models import CallEvent, HumanRequest, Principal
 
 Admission = Literal[
@@ -17,9 +24,21 @@ Admission = Literal[
 
 
 class AskHumanUseCase(Protocol):
-    async def ask(self, principal: Principal, request: AskHumanRequest) -> AskHumanResult: ...
+    async def ask(
+        self,
+        principal: Principal,
+        request: AskHumanRequest,
+        cancellation: "CancellationSignal",
+    ) -> AskHumanResult: ...
 
     async def handle_call_event(self, event: CallEvent) -> None: ...
+
+
+class CancellationSignal(Protocol):
+    @property
+    def cancelled(self) -> bool: ...
+
+    async def wait(self) -> None: ...
 
 
 class RequestRepository(Protocol):
@@ -59,15 +78,21 @@ class Clock(Protocol):
     async def sleep(self, seconds: float) -> None: ...
 
 
+class TelemetryOperation(StrEnum):
+    ASK = "ask"
+    CALLBACK = "callback"
+    REPOSITORY = "repository"
+
+
 class Telemetry(Protocol):
     def record(
         self,
         *,
-        operation: Literal["ask", "callback", "repository"],
+        operation: TelemetryOperation,
         request_id: UUID,
-        kind: str | None = None,
-        status: str | None = None,
-        outcome: str | None = None,
+        kind: RequestKind | None = None,
+        status: RequestStatus | None = None,
+        outcome: Outcome | None = None,
         acs_code: int | None = None,
         elapsed_ms: int | None = None,
         replay: bool | None = None,

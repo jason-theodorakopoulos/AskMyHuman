@@ -28,10 +28,26 @@ def test_settings_redact_database_url() -> None:
     assert configured.database_url.get_secret_value().endswith("/askmyhuman")
 
 
+def test_settings_redact_phone_numbers() -> None:
+    source = "+15555550100"
+    destination = "+15555550101"
+    configured = settings(
+        acs_source_phone_number=source,
+        my_mobile_number=destination,
+    )
+    representation = repr(configured)
+    assert source not in representation
+    assert destination not in representation
+    assert configured.acs_source_phone_number.get_secret_value() == source
+    assert configured.my_mobile_number.get_secret_value() == destination
+
+
 @pytest.mark.parametrize("field", ["acs_source_phone_number", "my_mobile_number"])
 def test_settings_require_e164_numbers(field: str) -> None:
-    with pytest.raises(ValidationError):
-        settings(**{field: "555-555-0100"})
+    invalid_phone = "555-555-0100"
+    with pytest.raises(ValidationError) as exc_info:
+        settings(**{field: invalid_phone})
+    assert invalid_phone not in str(exc_info.value)
 
 
 def test_settings_require_work_cutoff_before_deadline() -> None:

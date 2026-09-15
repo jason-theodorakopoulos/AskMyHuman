@@ -20,6 +20,45 @@ SCHEMAS: dict[str, type[BaseModel]] = {
 
 def content(model: type[BaseModel]) -> str:
     schema = model.model_json_schema(by_alias=True)
+    if model is AskHumanResult:
+        schema["oneOf"] = [
+            {
+                "properties": {
+                    "status": {"const": "responded"},
+                    "outcome": {"enum": ["approved", "rejected"]},
+                    "answer": {"type": "null"},
+                }
+            },
+            {
+                "properties": {
+                    "status": {"const": "responded"},
+                    "outcome": {"const": "answered"},
+                    "answer": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 4000,
+                        "pattern": r"\S",
+                    },
+                },
+                "required": ["answer"],
+            },
+            {
+                "properties": {
+                    "status": {"const": "expired"},
+                    "outcome": {
+                        "enum": [
+                            "no_answer",
+                            "busy",
+                            "declined",
+                            "disconnected",
+                            "cancelled",
+                            "deadline_exceeded",
+                        ]
+                    },
+                    "answer": {"type": "null"},
+                }
+            },
+        ]
     schema["$schema"] = "https://json-schema.org/draft/2020-12/schema"
     return json.dumps(schema, indent=2, sort_keys=True) + "\n"
 

@@ -406,10 +406,11 @@ file. Its modules have these responsibilities:
 * `postgresql.bicep` creates PostgreSQL Flexible Server 16 on the delegated
  subnet, one application database, private DNS linkage, TLS-only access, and a
  Burstable development SKU. It never outputs a password or complete DSN.
-* `communications.bicep` creates ACS with managed identity, the Azure AI
- multi-service resource used by Play and Recognize, and the minimum role
- assignments between ACS, AI, and the Container App identity. It returns only
- endpoints and resource IDs.
+* `communications.bicep` references an existing ACS resource that already owns
+ an outbound-enabled source number, creates the Azure AI multi-service resource
+ used by Play and Recognize, and applies the minimum role assignments between
+ ACS, AI, and the Container App identity. It returns only endpoints and resource
+ IDs and does not acquire or configure a PSTN number.
 * `container-app.bicep` creates one VNet-integrated Container Apps environment,
  one external-ingress Container App, secret references, probes, Microsoft
  Entra `authConfig`, and the callback exclusion. It sets port 8000, one active
@@ -427,6 +428,7 @@ credential. The required deployment environment variables are:
 * `POSTGRES_ADMIN_PASSWORD`
 * `MY_MOBILE_NUMBER`
 * `ACS_SOURCE_PHONE_NUMBER`
+* `EXISTING_ACS_RESOURCE_ID`
 * `ENTRA_TENANT_ID`
 * `ENTRA_CLIENT_ID`
 * `ENTRA_CLIENT_SECRET`

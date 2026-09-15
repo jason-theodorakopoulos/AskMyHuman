@@ -20,6 +20,7 @@ param postgresAdminPassword string
 @description('The sole destination phone number in E.164 format.')
 #disable-next-line no-unused-params
 param myMobileNumber string
+@secure()
 @description('ACS source phone number in E.164 format.')
 #disable-next-line no-unused-params
 param acsSourcePhoneNumber string
@@ -39,5 +40,36 @@ param authorizedAgentAppIds string
 @description('Existing ACS resource ID. The resource and source number are external.')
 #disable-next-line no-unused-params
 param existingAcsResourceId string
+
+// Frozen Phase 1B module contracts. Module owners implement these exact surfaces
+// without changing this composition root.
+// identity.bicep
+//   inputs: location, resourceNamePrefix
+//   outputs: identityResourceId, principalId, clientId
+// network.bicep
+//   inputs: location, resourceNamePrefix
+//   outputs: virtualNetworkId, containerAppsSubnetId, postgresqlSubnetId, privateDnsZoneId
+// observability.bicep
+//   inputs: location, resourceNamePrefix, retentionDays
+//   outputs: logAnalyticsWorkspaceId, applicationInsightsResourceId, applicationInsightsConnectionString
+// postgresql.bicep
+//   inputs: location, resourceNamePrefix, delegatedSubnetId, privateDnsZoneId,
+//           administratorPassword, databaseName, serverVersion
+//   outputs: serverResourceId, databaseHost, databaseName
+// communications.bicep
+//   inputs: location, resourceNamePrefix, existingAcsResourceId,
+//           containerIdentityPrincipalId
+//   outputs: acsResourceId, acsEndpoint, azureAiResourceId, azureAiEndpoint
+// container-app.bicep
+//   inputs: location, resourceNamePrefix, containerImage, containerRegistryServer,
+//           containerRegistryResourceId, identityResourceId, identityClientId,
+//           containerAppsSubnetId, logAnalyticsWorkspaceId,
+//           applicationInsightsConnectionString, databaseHost, databaseName,
+//           postgresAdminPassword, acsEndpoint, azureAiEndpoint,
+//           acsSourcePhoneNumber, myMobileNumber, entraTenantId, entraClientId,
+//           entraClientSecret, authorizedAgentAppIds, acsCallbackAudience,
+//           mcpAllowedHosts, locale, voiceName, deadlineSeconds,
+//           workCutoffSeconds, pollIntervalMilliseconds, retentionHours
+//   outputs: containerAppName, containerAppResourceId, fqdn
 
 output deploymentLocation string = location
