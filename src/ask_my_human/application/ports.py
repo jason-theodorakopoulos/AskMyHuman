@@ -23,7 +23,8 @@ class RequestRepository(Protocol):
         request: AskHumanRequest,
         request_hash: str,
         expires_at: datetime,
-    ) -> tuple[Admission, HumanRequest]: ...
+    ) -> tuple[Admission, HumanRequest]:
+        """Return created, joined pending, terminal replay, conflict, or pending admission loss."""
 
     async def attach_call_id(self, request_id: UUID, call_id: str) -> bool: ...
 
