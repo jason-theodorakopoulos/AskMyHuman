@@ -1,15 +1,16 @@
 
+Human-in-the-Loop for Autonomous Agents
 Goal: Give autonomous agents a universal way to reach a human when they need help.
 PoC Functional Requirements
 
-1. Request: Agent requests either approval or input. 
-2. Route: Request goes to the agent’s designated human/owner. Future: multiple humans and roles. 
-3. Reach: Contact the human via SMS or phone call. 
-4. Context: Provide enough context for the human to understand the request and make a decision. 
-5. Response: Support Approve / Reject for approvals and a human-provided answer for input. 
+1. Request: Agent requests either approval or input. Probably through an MCP tool
+2. Route: Request goes to the agent’s designated human/owner. Future: multiple humans and roles. For the MVP we just have an env var in the app with MY_MOBILE_NUMBER.
+3. Reach: Contact the human via phone call, simplest for MVP.
+4. Context: Provide enough context for the human to understand the request and make a decision. This is for the app implementation detail.
+5. Response: Support Approve / Reject for approvals and a human-provided answer for input. Voice based , we use gpt-realtime like LLM.
 6. Status: Track requests as Pending → Responded / Expired. 
-7. Resume: Store the response and make it available to the agent so it can resume, supporting long-running human waits independent of agent/session/MCP timeouts. 
-8. Escalation: Out of scope for PoC. Future: retries, additional channels, humans/roles, and escalation paths. 
+7. Resume: Since we move forward with phone calls only- this is a synchronous operation. no resume capability for the MVP.
+8. Escalation: Out of scope for MVP. Future: retries, additional channels, humans/roles, and escalation paths. 
 PoC Flow:
 Agent → AskHuman → Human → Response → Agent resumes
 
