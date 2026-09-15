@@ -104,4 +104,6 @@ jobs:
           ENTRA_CLIENT_ID: 00000000-0000-0000-0000-000000000000
           ENTRA_CLIENT_SECRET: placeholder
           AUTHORIZED_AGENT_APP_IDS: 00000000-0000-0000-0000-000000000000
+          ACS_CALLBACK_AUDIENCE: https://placeholder.example.com
+          MCP_ALLOWED_HOSTS: placeholder.example.com
           EXISTING_ACS_RESOURCE_ID: /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/placeholder/providers/Microsoft.Communication/communicationServices/placeholder

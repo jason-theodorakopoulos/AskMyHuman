@@ -86,9 +86,7 @@ async def _ask(client: httpx.AsyncClient, prompt: str, *, kind: str, key: UUID) 
     )
 
 
-async def _assert_stored_terminal(
-    repository: PostgresRequestRepository, request_id: UUID
-) -> None:
+async def _assert_stored_terminal(repository: PostgresRequestRepository, request_id: UUID) -> None:
     stored = await repository.get(request_id)
     assert stored is not None, "The completed request must be readable from PostgreSQL."
     assert stored.call_id, "A completed call must be correlated to an ACS call connection."
@@ -134,9 +132,7 @@ async def test_live_backdated_terminal_row_is_purged_by_the_production_path(
     await _insert_terminal_row(pool, expired_id, completed_hours_ago=_RETENTION_HOURS + 1)
     await _insert_terminal_row(pool, retained_id, completed_hours_ago=0)
 
-    maintenance = RequestMaintenance(
-        repository, _SystemClock(), retention_hours=_RETENTION_HOURS
-    )
+    maintenance = RequestMaintenance(repository, _SystemClock(), retention_hours=_RETENTION_HOURS)
     assert await maintenance.purge_once() >= 1
 
     assert await repository.get(expired_id) is None
