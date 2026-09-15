@@ -1,0 +1,63 @@
+{
+  "$defs": {
+    "Outcome": {
+      "enum": [
+        "approved",
+        "rejected",
+        "answered",
+        "no_answer",
+        "busy",
+        "declined",
+        "disconnected",
+        "cancelled",
+        "deadline_exceeded"
+      ],
+      "title": "Outcome",
+      "type": "string"
+    },
+    "RequestStatus": {
+      "enum": [
+        "responded",
+        "expired"
+      ],
+      "title": "RequestStatus",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "answer": {
+      "anyOf": [
+        {
+          "maxLength": 4000,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Answer"
+    },
+    "outcome": {
+      "$ref": "#/$defs/Outcome"
+    },
+    "requestId": {
+      "format": "uuid",
+      "title": "Requestid",
+      "type": "string"
+    },
+    "status": {
+      "$ref": "#/$defs/RequestStatus"
+    }
+  },
+  "required": [
+    "requestId",
+    "status",
+    "outcome"
+  ],
+  "title": "AskHumanResult",
+  "type": "object"
+}

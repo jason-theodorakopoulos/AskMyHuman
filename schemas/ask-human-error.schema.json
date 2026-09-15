@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "code": {
+      "enum": [
+        "invalid_request",
+        "unauthenticated",
+        "forbidden",
+        "idempotency_conflict",
+        "rate_limited",
+        "dependency_failure",
+        "internal"
+      ],
+      "title": "Code",
+      "type": "string"
+    },
+    "message": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Message",
+      "type": "string"
+    },
+    "requestId": {
+      "anyOf": [
+        {
+          "format": "uuid",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Requestid"
+    },
+    "retryable": {
+      "title": "Retryable",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "code",
+    "message",
+    "retryable"
+  ],
+  "title": "ExecutionError",
+  "type": "object"
+}

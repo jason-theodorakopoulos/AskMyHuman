@@ -5,7 +5,13 @@ from uuid import uuid4
 import jsonschema
 import pytest
 
-from ask_my_human.contracts import AskHumanRequest, AskHumanResult, ExecutionError, Outcome, RequestStatus
+from ask_my_human.contracts import (
+    AskHumanRequest,
+    AskHumanResult,
+    ExecutionError,
+    Outcome,
+    RequestStatus,
+)
 
 SCHEMAS = Path("schemas")
 
@@ -25,7 +31,9 @@ def test_request_schema_validates_normalized_approval() -> None:
     ("result", "filename"),
     [
         (
-            AskHumanResult(requestId=uuid4(), status=RequestStatus.RESPONDED, outcome=Outcome.APPROVED),
+            AskHumanResult(
+                requestId=uuid4(), status=RequestStatus.RESPONDED, outcome=Outcome.APPROVED
+            ),
             "ask-human-result.schema.json",
         ),
         (

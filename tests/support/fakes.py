@@ -1,6 +1,6 @@
 """Deterministic fakes shared by adapter and application tests."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from ask_my_human.application.ports import AskHumanUseCase
 from ask_my_human.contracts import AskHumanRequest, AskHumanResult, Outcome, RequestStatus
@@ -9,7 +9,7 @@ from ask_my_human.domain.models import CallEvent, Principal
 
 class FakeClock:
     def __init__(self, now: datetime | None = None) -> None:
-        self.current = now or datetime(2026, 1, 1, tzinfo=timezone.utc)
+        self.current = now or datetime(2026, 1, 1, tzinfo=UTC)
 
     def now(self) -> datetime:
         return self.current

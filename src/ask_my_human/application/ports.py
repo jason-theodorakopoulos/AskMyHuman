@@ -18,7 +18,11 @@ class AskHumanUseCase(Protocol):
 
 class RequestRepository(Protocol):
     async def create_or_replay(
-        self, principal: Principal, request: AskHumanRequest, request_hash: str, expires_at: datetime
+        self,
+        principal: Principal,
+        request: AskHumanRequest,
+        request_hash: str,
+        expires_at: datetime,
     ) -> tuple[Admission, HumanRequest]: ...
 
     async def attach_call_id(self, request_id: UUID, call_id: str) -> bool: ...

@@ -1,10 +1,16 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
 
 from ask_my_human.contracts import AskHumanRequest, Outcome, RequestStatus
-from ask_my_human.domain.models import CallEvent, CallEventType, HumanRequest, Principal, RequestState
+from ask_my_human.domain.models import (
+    CallEvent,
+    CallEventType,
+    HumanRequest,
+    Principal,
+    RequestState,
+)
 from ask_my_human.domain.transitions import complete, result_for_event
 
 
@@ -30,7 +36,9 @@ def test_event_maps_to_terminal_result(
 
 def test_answered_event_normalizes_text() -> None:
     result = result_for_event(
-        CallEvent(request_id=uuid4(), event_type=CallEventType.ANSWERED, answer="  Stop deployment.  ")
+        CallEvent(
+            request_id=uuid4(), event_type=CallEventType.ANSWERED, answer="  Stop deployment.  "
+        )
     )
     assert result.answer == "Stop deployment."
 
@@ -43,7 +51,10 @@ def test_terminal_request_cannot_transition_again() -> None:
         request=AskHumanRequest(kind="approval", prompt="Continue?", idempotencyKey=uuid4()),
         request_hash="hash",
         state=RequestState.RESPONDED,
-        created_at=datetime.now(timezone.utc),
-        expires_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
+        expires_at=datetime.now(UTC),
     )
-    assert complete(request, CallEvent(request_id=request_id, event_type=CallEventType.APPROVED)) is None
+    assert (
+        complete(request, CallEvent(request_id=request_id, event_type=CallEventType.APPROVED))
+        is None
+    )

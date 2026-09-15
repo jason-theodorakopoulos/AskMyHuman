@@ -17,9 +17,7 @@ class ErrorCode(StrEnum):
 class AskMyHumanError(Exception):
     """An error safe to expose through the public protocol."""
 
-    def __init__(
-        self, code: ErrorCode, message: str, *, request_id: UUID | None = None
-    ) -> None:
+    def __init__(self, code: ErrorCode, message: str, *, request_id: UUID | None = None) -> None:
         self.code = code
         self.message = message
         self.request_id = request_id
