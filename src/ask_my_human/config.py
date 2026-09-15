@@ -36,7 +36,7 @@ class Settings(BaseSettings):
         return value
 
     @model_validator(mode="after")
-    def validate_timings(self) -> "Settings":
+    def validate_settings(self) -> "Settings":
         if self.work_cutoff_seconds >= self.deadline_seconds:
             raise ValueError("work_cutoff_seconds must be less than deadline_seconds")
         if not self.authorized_agent_app_ids:
