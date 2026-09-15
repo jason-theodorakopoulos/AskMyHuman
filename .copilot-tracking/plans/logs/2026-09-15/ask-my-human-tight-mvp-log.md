@@ -46,6 +46,14 @@ implementation plan.
   * Plan implements: Exactly one minimum and maximum replica while preserving database-backed restart safety.
   * Rationale: This follows the detailed implementation research and bounds session and concurrency behavior for the one-pending-request MVP. Horizontal scaling remains follow-on work rather than an unapproved architecture change.
   * Source: .copilot-tracking/research/2026-09-15/tight-mvp-scope-research.md (Lines 53-66) and .copilot-tracking/research/subagents/2026-09-15/parallel-implementation-layout-research.md (Lines 28-53, 421-424)
+* DD-03: Durable technical-error replay extends the frozen internal request and repository contracts.
+  * Plan specifies: Technical failures produce stable execution errors and accepted state survives process replacement.
+  * Implementation differs: `HumanRequest` includes an internal failed state and sanitized error fields, and `RequestRepository` includes conditional error completion.
+  * Rationale: Process-local error storage replayed `deadline_exceeded` after service replacement. Persisting the stable public error code and sanitized message satisfies restart durability without changing wire schemas.
+* DD-04: Cross-scope Azure role assignments use two workstream-owned support modules.
+  * Plan specifies: Communications and Container App module owners implement minimum role assignments in their assigned modules.
+  * Implementation differs: Each owner added one nested role-assignment module scoped to the existing ACS or ACR resource group.
+  * Rationale: Bicep rejects direct role assignments to resources outside the parent resource-group scope. Nested deployments preserve least privilege and the frozen public module interfaces.
 
 ## Implementation Paths Considered
 

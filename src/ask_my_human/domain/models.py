@@ -6,12 +6,14 @@ from enum import StrEnum
 from uuid import UUID
 
 from ask_my_human.contracts import AskHumanRequest, AskHumanResult
+from ask_my_human.errors import ErrorCode
 
 
 class RequestState(StrEnum):
     PENDING = "pending"
     RESPONDED = "responded"
     EXPIRED = "expired"
+    FAILED = "failed"
 
 
 class CallEventType(StrEnum):
@@ -50,3 +52,5 @@ class HumanRequest:
     expires_at: datetime
     call_id: str | None = None
     result: AskHumanResult | None = None
+    error_code: ErrorCode | None = None
+    error_message: str | None = None

@@ -1,0 +1,11 @@
+{
+  "specversion": "1.0",
+  "id": "55555555-5555-5555-5555-555555555555",
+  "source": "/calling/callConnections/sanitized-call",
+  "type": "Microsoft.Communication.RecognizeFailed",
+  "data": {
+    "operationContext": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    "callConnectionId": "sanitized-call",
+    "resultInformation": {"code": 400, "subCode": 8510, "message": "sanitized"}
+  }
+}

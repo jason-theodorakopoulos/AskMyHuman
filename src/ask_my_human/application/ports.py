@@ -13,6 +13,7 @@ from ask_my_human.contracts import (
     RequestStatus,
 )
 from ask_my_human.domain.models import CallEvent, HumanRequest, Principal
+from ask_my_human.errors import ErrorCode
 
 Admission = Literal[
     "created",
@@ -56,6 +57,13 @@ class RequestRepository(Protocol):
     async def get(self, request_id: UUID) -> HumanRequest | None: ...
 
     async def complete_if_pending(self, result: AskHumanResult) -> bool: ...
+
+    async def complete_error_if_pending(
+        self,
+        request_id: UUID,
+        error_code: ErrorCode,
+        error_message: str,
+    ) -> bool: ...
 
     async def expire_stale(self, now: datetime) -> int: ...
 

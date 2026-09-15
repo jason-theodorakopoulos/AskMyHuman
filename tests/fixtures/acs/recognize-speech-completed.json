@@ -1,0 +1,11 @@
+{
+  "specversion": "1.0",
+  "id": "66666666-6666-6666-6666-666666666666",
+  "source": "/calling/callConnections/sanitized-call",
+  "type": "Microsoft.Communication.RecognizeCompleted",
+  "data": {
+    "operationContext": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    "callConnectionId": "sanitized-call",
+    "speechResult": {"speech": "  Stop deployment.  "}
+  }
+}

@@ -24,6 +24,7 @@ from ask_my_human.contracts import (
     RequestStatus,
 )
 from ask_my_human.domain.models import Principal, RequestState
+from ask_my_human.errors import ErrorCode
 
 
 def request() -> AskHumanRequest:
@@ -88,6 +89,36 @@ async def test_repository_supports_join_conflict_replay_and_first_terminal_wins(
     )
     assert replayed == "replayed"
     assert terminal.state is RequestState.RESPONDED
+
+
+@pytest.mark.asyncio
+async def test_repository_error_completion_is_terminal_and_replayable() -> None:
+    repository = FakeRequestRepository()
+    human_request = request()
+    _, created = await repository.create_or_replay(
+        principal(), human_request, "original", datetime.now(tz=UTC) + timedelta(seconds=210)
+    )
+
+    assert await repository.complete_error_if_pending(
+        created.request_id,
+        ErrorCode.DEPENDENCY_FAILURE,
+        "The call service could not process the request.",
+    )
+    result = AskHumanResult(
+        requestId=created.request_id,
+        status=RequestStatus.RESPONDED,
+        outcome=Outcome.APPROVED,
+    )
+    assert await repository.complete_if_pending(result) is False
+
+    admission, terminal = await repository.create_or_replay(
+        principal(), human_request, "original", datetime.now(tz=UTC) + timedelta(seconds=210)
+    )
+    assert admission == "replayed"
+    assert terminal.state is RequestState.FAILED
+    assert terminal.result is None
+    assert terminal.error_code is ErrorCode.DEPENDENCY_FAILURE
+    assert terminal.error_message == "The call service could not process the request."
 
 
 @pytest.mark.asyncio

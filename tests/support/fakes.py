@@ -19,6 +19,7 @@ from ask_my_human.contracts import (
     RequestStatus,
 )
 from ask_my_human.domain.models import CallEvent, HumanRequest, Principal, RequestState
+from ask_my_human.errors import ErrorCode
 
 
 class FakeCancellationSignal:
@@ -133,6 +134,23 @@ class FakeRequestRepository:
             else RequestState.EXPIRED
         )
         self.requests[result.request_id] = replace(item, state=state, result=result)
+        return True
+
+    async def complete_error_if_pending(
+        self,
+        request_id: UUID,
+        error_code: ErrorCode,
+        error_message: str,
+    ) -> bool:
+        item = self.requests.get(request_id)
+        if item is None or item.state is not RequestState.PENDING:
+            return False
+        self.requests[request_id] = replace(
+            item,
+            state=RequestState.FAILED,
+            error_code=error_code,
+            error_message=error_message,
+        )
         return True
 
     async def expire_stale(self, now: datetime) -> int:

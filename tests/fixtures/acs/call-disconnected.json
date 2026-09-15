@@ -1,0 +1,11 @@
+{
+  "specversion": "1.0",
+  "id": "22222222-2222-2222-2222-222222222222",
+  "source": "/calling/callConnections/sanitized-call",
+  "type": "Microsoft.Communication.CallDisconnected",
+  "data": {
+    "operationContext": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    "callConnectionId": "sanitized-call",
+    "resultInformation": {"code": 487, "subCode": 10024, "message": "sanitized"}
+  }
+}

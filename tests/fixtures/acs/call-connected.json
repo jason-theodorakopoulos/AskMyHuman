@@ -1,0 +1,10 @@
+{
+  "specversion": "1.0",
+  "id": "11111111-1111-1111-1111-111111111111",
+  "source": "/calling/callConnections/sanitized-call",
+  "type": "Microsoft.Communication.CallConnected",
+  "data": {
+    "operationContext": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    "callConnectionId": "sanitized-call"
+  }
+}

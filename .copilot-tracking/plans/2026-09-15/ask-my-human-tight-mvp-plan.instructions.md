@@ -128,55 +128,55 @@ commit before feature branches diverge.
 * [ ] Step 0.5: Run contract, domain, configuration, schema, lock, lint, and type validation; publish the foundation commit.
   * Details: .copilot-tracking/details/2026-09-15/ask-my-human-tight-mvp-details.md (Lines 217-236)
 
-### [ ] Implementation Phase 1A: Parallel Application Workstreams
+### [x] Implementation Phase 1A: Parallel Application Workstreams
 
 <!-- parallelizable: true -->
 
 Start all eight workstreams from the same Phase 0 commit. Each owner runs the
 focused validation listed in the details before integration handoff.
 
-* [ ] Step 1A.1: Implement Alembic, PostgreSQL pooling, SQL repository semantics, and persistence integration tests.
+* [x] Step 1A.1: Implement Alembic, PostgreSQL pooling, SQL repository semantics, and persistence integration tests.
   * Owner: Persistence developer
   * Details: .copilot-tracking/details/2026-09-15/ask-my-human-tight-mvp-details.md (Lines 244-293)
-* [ ] Step 1A.2: Implement synchronous orchestration, deadline handling, cancellation semantics, and maintenance loops.
+* [x] Step 1A.2: Implement synchronous orchestration, deadline handling, cancellation semantics, and maintenance loops.
   * Owner: Core application developer
   * Details: .copilot-tracking/details/2026-09-15/ask-my-human-tight-mvp-details.md (Lines 294-336)
-* [ ] Step 1A.3: Implement ACS outbound calling, Play and Recognize, callback parsing, and result-code mapping.
+* [x] Step 1A.3: Implement ACS outbound calling, Play and Recognize, callback parsing, and result-code mapping.
   * Owner: Telephony developer
   * Details: .copilot-tracking/details/2026-09-15/ask-my-human-tight-mvp-details.md (Lines 337-387)
-* [ ] Step 1A.4: Implement agent authorization and ACS callback JWT validation.
+* [x] Step 1A.4: Implement agent authorization and ACS callback JWT validation.
   * Owner: Security developer
   * Details: .copilot-tracking/details/2026-09-15/ask-my-human-tight-mvp-details.md (Lines 388-429)
-* [ ] Step 1A.5: Implement synchronous HTTP request and ACS callback routers.
+* [x] Step 1A.5: Implement synchronous HTTP request and ACS callback routers.
   * Owner: HTTP API developer
   * Details: .copilot-tracking/details/2026-09-15/ask-my-human-tight-mvp-details.md (Lines 430-472)
-* [ ] Step 1A.6: Implement liveness, readiness, and OAuth protected-resource metadata.
+* [x] Step 1A.6: Implement liveness, readiness, and OAuth protected-resource metadata.
   * Owner: Platform API developer
   * Details: .copilot-tracking/details/2026-09-15/ask-my-human-tight-mvp-details.md (Lines 473-508)
-* [ ] Step 1A.7: Implement the single-tool MCP Streamable HTTP adapter.
+* [x] Step 1A.7: Implement the single-tool MCP Streamable HTTP adapter.
   * Owner: MCP developer
   * Details: .copilot-tracking/details/2026-09-15/ask-my-human-tight-mvp-details.md (Lines 509-548)
-* [ ] Step 1A.8: Implement redacted OpenTelemetry spans, metrics, and sensitive-sentinel tests.
+* [x] Step 1A.8: Implement redacted OpenTelemetry spans, metrics, and sensitive-sentinel tests.
   * Owner: Observability developer
   * Details: .copilot-tracking/details/2026-09-15/ask-my-human-tight-mvp-details.md (Lines 549-589)
 
-### [ ] Implementation Phase 1B: Parallel Infrastructure Modules
+### [x] Implementation Phase 1B: Parallel Infrastructure Modules
 
 <!-- parallelizable: true -->
 
 Run this phase concurrently with Phase 1A. Module owners use frozen interfaces
 and never edit the Bicep composition root.
 
-* [ ] Step 1B.1: Implement private networking and PostgreSQL Flexible Server modules.
+* [x] Step 1B.1: Implement private networking and PostgreSQL Flexible Server modules.
   * Owner: Data infrastructure developer
   * Details: .copilot-tracking/details/2026-09-15/ask-my-human-tight-mvp-details.md (Lines 598-630)
-* [ ] Step 1B.2: Implement managed identity, existing numbered ACS reference, Azure AI, and minimum role assignment modules.
+* [x] Step 1B.2: Implement managed identity, existing numbered ACS reference, Azure AI, and minimum role assignment modules.
   * Owner: Communications infrastructure developer
   * Details: .copilot-tracking/details/2026-09-15/ask-my-human-tight-mvp-details.md (Lines 631-668)
-* [ ] Step 1B.3: Implement Log Analytics and Application Insights with explicit retention.
+* [x] Step 1B.3: Implement Log Analytics and Application Insights with explicit retention.
   * Owner: Monitoring infrastructure developer
   * Details: .copilot-tracking/details/2026-09-15/ask-my-human-tight-mvp-details.md (Lines 669-698)
-* [ ] Step 1B.4: Implement the VNet-integrated Container Apps environment, single app, Entra auth, probes, secrets, and one-replica limit.
+* [x] Step 1B.4: Implement the VNet-integrated Container Apps environment, single app, Entra auth, probes, secrets, and one-replica limit.
   * Owner: Compute infrastructure developer
   * Details: .copilot-tracking/details/2026-09-15/ask-my-human-tight-mvp-details.md (Lines 699-734)
 
