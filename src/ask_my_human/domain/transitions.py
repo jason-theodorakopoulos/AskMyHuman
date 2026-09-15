@@ -22,7 +22,7 @@ def result_for_event(event: CallEvent) -> AskHumanResult:
     """Map one typed callback to a valid public terminal result."""
     if event.event_type in _RESPONDED:
         outcome = _RESPONDED[event.event_type]
-        answer = event.answer.strip() if event.answer else None
+        answer = event.answer.strip() or None if event.answer else None
         if outcome is Outcome.ANSWERED and answer is None:
             raise ValueError("an answered event requires nonblank text")
         return AskHumanResult(

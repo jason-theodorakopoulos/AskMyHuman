@@ -50,6 +50,14 @@ def test_approval_event_ignores_callback_text() -> None:
     assert result.answer is None
 
 
+@pytest.mark.parametrize("answer", [None, "   "])
+def test_answered_event_requires_nonblank_text(answer: str | None) -> None:
+    with pytest.raises(ValueError, match="answered event requires nonblank text"):
+        result_for_event(
+            CallEvent(request_id=uuid4(), event_type=CallEventType.ANSWERED, answer=answer)
+        )
+
+
 def test_terminal_request_cannot_transition_again() -> None:
     request_id = uuid4()
     request = HumanRequest(
