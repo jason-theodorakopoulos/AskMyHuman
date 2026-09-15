@@ -1,0 +1,107 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  UV_VERSION: "0.12.0"
+
+jobs:
+  python:
+    name: Lint, type-check, and test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+
+      - name: Verify lockfile is current
+        run: uv lock --check
+
+      - name: Install environment
+        run: uv sync --frozen --all-groups
+
+      - name: Verify generated JSON Schemas match the models
+        run: uv run python scripts/export_schemas.py --check
+
+      - name: Check formatting
+        run: uv run ruff format --check .
+
+      - name: Lint
+        run: uv run ruff check .
+
+      - name: Type-check
+        run: uv run mypy src tests
+
+      # Integration tests start PostgreSQL 16 via testcontainers using the runner's Docker.
+      - name: Test with coverage
+        run: uv run pytest -m "not live" --cov=ask_my_human --cov-report=term-missing --cov-fail-under=90
+
+  image:
+    name: Build container image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate Compose configuration
+        run: docker compose config --quiet
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          load: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  bicep:
+    name: Build Bicep
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Bicep
+        run: az bicep install
+
+      - name: Build every template and parameter file
+        run: |
+          set -euo pipefail
+          for file in infra/main.bicep infra/modules/*.bicep; do
+            echo "::group::$file"
+            az bicep build --file "$file" --stdout > /dev/null
+            echo "::endgroup::"
+          done
+          for file in infra/environments/*.bicepparam; do
+            echo "::group::$file"
+            az bicep build-params --file "$file" --stdout > /dev/null
+            echo "::endgroup::"
+          done
+        # readEnvironmentVariable() has no defaults, so compilation needs values present.
+        # These are compile-time placeholders only and are never deployed.
+        env:
+          AZURE_LOCATION: westeurope
+          CONTAINER_IMAGE: placeholder.azurecr.io/ask-my-human:ci
+          CONTAINER_REGISTRY_SERVER: placeholder.azurecr.io
+          CONTAINER_REGISTRY_RESOURCE_ID: /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/placeholder/providers/Microsoft.ContainerRegistry/registries/placeholder
+          POSTGRES_ADMIN_PASSWORD: placeholder
+          MY_MOBILE_NUMBER: "+15555550101"
+          ACS_SOURCE_PHONE_NUMBER: "+15555550100"
+          ENTRA_TENANT_ID: 00000000-0000-0000-0000-000000000000
+          ENTRA_CLIENT_ID: 00000000-0000-0000-0000-000000000000
+          ENTRA_CLIENT_SECRET: placeholder
+          AUTHORIZED_AGENT_APP_IDS: 00000000-0000-0000-0000-000000000000
+          EXISTING_ACS_RESOURCE_ID: /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/placeholder/providers/Microsoft.Communication/communicationServices/placeholder
