@@ -14,6 +14,8 @@ resource logAnalyticsWorkspace 'Microsoft.OperationalInsights/workspaces@2023-09
   name: '${resourceNamePrefix}-logs'
   location: location
   properties: {
+    publicNetworkAccessForIngestion: 'Enabled'
+    publicNetworkAccessForQuery: 'Enabled'
     retentionInDays: retentionDays
     sku: {
       name: 'PerGB2018'
@@ -28,6 +30,8 @@ resource applicationInsights 'Microsoft.Insights/components@2020-02-02' = {
   properties: {
     Application_Type: 'web'
     IngestionMode: 'LogAnalytics'
+    publicNetworkAccessForIngestion: 'Enabled'
+    publicNetworkAccessForQuery: 'Enabled'
     RetentionInDays: retentionDays
     WorkspaceResourceId: logAnalyticsWorkspace.id
   }

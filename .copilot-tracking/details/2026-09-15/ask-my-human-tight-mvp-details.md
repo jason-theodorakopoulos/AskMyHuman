@@ -189,7 +189,6 @@ Document or stub the exact parameter names without implementing sibling modules.
 Required module ownership:
 
 * Identity returns managed identity resource ID, principal ID, and client ID.
-* Network returns VNet, Container Apps subnet, PostgreSQL delegated subnet, and private DNS identifiers.
 * Observability returns Log Analytics and Application Insights identifiers and connection settings.
 * PostgreSQL returns host, database name, and server resource ID, never credentials or a complete DSN.
 * Communications references an existing ACS resource that already owns an outbound-enabled source number, creates the Azure AI resource, applies role assignments, and returns endpoints and resource IDs.
@@ -595,32 +594,30 @@ Phase 1B starts after the Phase 0 Bicep interface freeze and runs concurrently
 with all Phase 1A application work. Each module owner builds only the owned
 module and returns outputs through the frozen contract.
 
-### Step 1B.1: Implement Network And PostgreSQL Modules
+### Step 1B.1: Implement Public PostgreSQL
 
-Create a VNet, dedicated Container Apps infrastructure subnet, delegated
-PostgreSQL subnet, private DNS zone and link, PostgreSQL Flexible Server 16,
-application database, TLS-only configuration, and Burstable development SKU.
-Keep administrative credentials in secure parameters and never output them.
+Create PostgreSQL Flexible Server 16 with a public endpoint, an Azure-services
+firewall rule, application database, TLS-only configuration, and Burstable
+development SKU. Keep administrative credentials in secure parameters and never
+output them. Do not provision a VNet, subnet, private endpoint, or DNS zone.
 
 Files:
 
-* infra/modules/network.bicep - VNet, subnets, delegation, and private DNS
-* infra/modules/postgresql.bicep - Server, database, private networking, and outputs
+* infra/modules/postgresql.bicep - Public server, database, firewall, TLS, and outputs
 
 Discrepancy references:
 
-* None; implements the selected private PostgreSQL deployment.
+* DD-05 records the deliberate simplification from private networking to public service endpoints.
 
 Success criteria:
 
-* Both modules compile independently.
-* PostgreSQL has no public network dependency.
+* The module compiles independently.
+* PostgreSQL uses a public endpoint with TLS and an Azure-services firewall rule.
 * Outputs contain identifiers and host information only.
 
 Validation commands:
 
 ```bash
-az bicep build --file infra/modules/network.bicep
 az bicep build --file infra/modules/postgresql.bicep
 ```
 
@@ -698,10 +695,11 @@ Dependencies:
 
 ### Step 1B.4: Implement The Container App Module
 
-Create one VNet-integrated Container Apps environment and one external-ingress
-Container App on port 8000. Configure one active revision, exactly one minimum and
+Create one public Container Apps environment and one external-ingress Container
+App on port 8000. Configure one active revision, exactly one minimum and
 maximum replica, managed identity, registry pull, secret references, liveness and
 readiness probes, Entra `authConfig`, and only the ACS callback path exclusion.
+Do not provision or attach a VNet or infrastructure subnet.
 Keep the 240-second ingress limit in mind but enforce the shorter application
 deadline in runtime settings.
 

@@ -121,10 +121,10 @@ Publication status:
 
 ## Phase 1B Changes
 
-### Step 1B.1: Network And PostgreSQL
+### Step 1B.1: Public PostgreSQL
 
-* Added private VNet, delegated subnets, private DNS, and PostgreSQL Flexible Server 16 modules.
-* Disabled PostgreSQL public access and enforced TLS with secure administrator inputs.
+* Added PostgreSQL Flexible Server 16 with public network access and an Azure-services firewall rule.
+* Enforced TLS with secure administrator inputs and removed the VNet, delegated subnets, and private DNS module.
 
 ### Step 1B.2: Identity And Communications
 
@@ -134,11 +134,11 @@ Publication status:
 
 ### Step 1B.3: Observability Infrastructure
 
-* Added Log Analytics and workspace-based Application Insights with explicit 30-day retention.
+* Added Log Analytics and workspace-based Application Insights with explicit 30-day retention and public ingestion and query access.
 
 ### Step 1B.4: Container App
 
-* Added a VNet-integrated Container Apps environment and one externally accessible app with one replica.
+* Added a public Container Apps environment and one externally accessible app with one replica.
 * Added managed identity, ACR pull, secret references, health probes, Entra authentication, and the sole ACS callback exclusion.
 * Added a nested ACR-scoped role-assignment support module for cross-resource-group deployments.
 
@@ -149,16 +149,20 @@ Publication status:
 * Combined unit, contract, and PostgreSQL integration suite passed with 150 tests.
 * Strict mypy passed for 28 source files.
 * Ruff formatting and lint checks passed for 54 Python files.
-* All eight Phase 1B Bicep and support modules compiled with Bicep CLI 0.47.16 with zero warnings and zero errors.
+* All seven Phase 1B Bicep and support modules compiled with Bicep CLI 0.47.16 with zero warnings and zero errors.
 * Workspace diagnostics and `git diff --check` passed.
 
 ## Additional Or Deviating Changes
 
 * Extended internal domain and repository contracts for durable technical-error replay after process replacement.
-	* Public request, result, and execution-error wire schemas remain unchanged.
+  * Public request, result, and execution-error wire schemas remain unchanged.
 * Added two nested role-assignment support modules.
-	* Bicep requires a nested deployment when assigning roles to existing ACS and ACR resources in another resource group or subscription.
+  * Bicep requires a nested deployment when assigning roles to existing ACS and ACR resources in another resource group or subscription.
+* Replaced private VNet integration with public service endpoints for the tight MVP.
+  * Removed `infra/modules/network.bicep`, subnet inputs, and private DNS inputs.
+  * PostgreSQL permits Azure-hosted clients through the documented `0.0.0.0` Azure-services rule, not an unrestricted internet address range.
+  * Entra authentication, ACS callback JWT validation, managed identity, TLS, secure parameters, and one-replica scaling remain unchanged.
 
 ## Release Summary
 
-Phase 1A delivers all independently testable application implementations for persistence, orchestration, telephony, security, HTTP, health, OAuth metadata, MCP, and observability. Phase 1B delivers all independently compilable Azure infrastructure modules. Phase 2 composition remains intentionally unimplemented.
+Phase 1A delivers all independently testable application implementations for persistence, orchestration, telephony, security, HTTP, health, OAuth metadata, MCP, and observability. Phase 1B delivers all independently compilable public-endpoint Azure infrastructure modules. Phase 2 composition remains intentionally unimplemented.

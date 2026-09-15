@@ -4,10 +4,6 @@ targetScope = 'resourceGroup'
 param location string
 @description('Prefix used to name PostgreSQL resources.')
 param resourceNamePrefix string
-@description('Resource ID of the subnet delegated to PostgreSQL Flexible Server.')
-param delegatedSubnetId string
-@description('Resource ID of the PostgreSQL private DNS zone.')
-param privateDnsZoneId string
 @secure()
 @description('PostgreSQL administrator password.')
 param administratorPassword string
@@ -45,13 +41,20 @@ resource server 'Microsoft.DBforPostgreSQL/flexibleServers@2024-08-01' = {
       mode: 'Disabled'
     }
     network: {
-      delegatedSubnetResourceId: delegatedSubnetId
-      privateDnsZoneArmResourceId: privateDnsZoneId
-      publicNetworkAccess: 'Disabled'
+      publicNetworkAccess: 'Enabled'
     }
     storage: {
       storageSizeGB: 32
     }
+  }
+}
+
+resource allowAzureServices 'Microsoft.DBforPostgreSQL/flexibleServers/firewallRules@2024-08-01' = {
+  parent: server
+  name: 'AllowAllAzureServicesAndResourcesWithinAzureIps'
+  properties: {
+    startIpAddress: '0.0.0.0'
+    endIpAddress: '0.0.0.0'
   }
 }
 

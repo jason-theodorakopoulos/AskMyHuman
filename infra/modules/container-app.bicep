@@ -14,8 +14,6 @@ param containerRegistryResourceId string
 param identityResourceId string
 @description('User-assigned managed identity client ID.')
 param identityClientId string
-@description('Resource ID of the Container Apps infrastructure subnet.')
-param containerAppsSubnetId string
 @description('Resource ID of the Log Analytics workspace.')
 param logAnalyticsWorkspaceId string
 @secure()
@@ -99,10 +97,6 @@ resource containerAppsEnvironment 'Microsoft.App/managedEnvironments@2024-03-01'
         customerId: logAnalyticsWorkspace.properties.customerId
         sharedKey: logAnalyticsWorkspace.listKeys().primarySharedKey
       }
-    }
-    vnetConfiguration: {
-      infrastructureSubnetId: containerAppsSubnetId
-      internal: false
     }
     zoneRedundant: false
   }

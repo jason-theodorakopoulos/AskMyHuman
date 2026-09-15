@@ -46,15 +46,12 @@ param existingAcsResourceId string
 // identity.bicep
 //   inputs: location, resourceNamePrefix
 //   outputs: identityResourceId, principalId, clientId
-// network.bicep
-//   inputs: location, resourceNamePrefix
-//   outputs: virtualNetworkId, containerAppsSubnetId, postgresqlSubnetId, privateDnsZoneId
 // observability.bicep
 //   inputs: location, resourceNamePrefix, retentionDays
 //   outputs: logAnalyticsWorkspaceId, applicationInsightsResourceId, applicationInsightsConnectionString
 // postgresql.bicep
-//   inputs: location, resourceNamePrefix, delegatedSubnetId, privateDnsZoneId,
-//           administratorPassword, databaseName, serverVersion
+//   inputs: location, resourceNamePrefix, administratorPassword, databaseName,
+//           serverVersion
 //   outputs: serverResourceId, databaseHost, databaseName
 // communications.bicep
 //   inputs: location, resourceNamePrefix, existingAcsResourceId,
@@ -63,13 +60,13 @@ param existingAcsResourceId string
 // container-app.bicep
 //   inputs: location, resourceNamePrefix, containerImage, containerRegistryServer,
 //           containerRegistryResourceId, identityResourceId, identityClientId,
-//           containerAppsSubnetId, logAnalyticsWorkspaceId,
-//           applicationInsightsConnectionString, databaseHost, databaseName,
-//           postgresAdminPassword, acsEndpoint, azureAiEndpoint,
-//           acsSourcePhoneNumber, myMobileNumber, entraTenantId, entraClientId,
-//           entraClientSecret, authorizedAgentAppIds, acsCallbackAudience,
-//           mcpAllowedHosts, locale, voiceName, deadlineSeconds,
-//           workCutoffSeconds, pollIntervalMilliseconds, retentionHours
+//           logAnalyticsWorkspaceId, applicationInsightsConnectionString,
+//           databaseHost, databaseName, postgresAdminPassword, acsEndpoint,
+//           azureAiEndpoint, acsSourcePhoneNumber, myMobileNumber, entraTenantId,
+//           entraClientId, entraClientSecret, authorizedAgentAppIds,
+//           acsCallbackAudience, mcpAllowedHosts, locale, voiceName,
+//           deadlineSeconds, workCutoffSeconds, pollIntervalMilliseconds,
+//           retentionHours
 //   outputs: containerAppName, containerAppResourceId, fqdn
 
 output deploymentLocation string = location

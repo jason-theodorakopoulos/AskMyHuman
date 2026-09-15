@@ -54,6 +54,10 @@ implementation plan.
   * Plan specifies: Communications and Container App module owners implement minimum role assignments in their assigned modules.
   * Implementation differs: Each owner added one nested role-assignment module scoped to the existing ACS or ACR resource group.
   * Rationale: Bicep rejects direct role assignments to resources outside the parent resource-group scope. Nested deployments preserve least privilege and the frozen public module interfaces.
+* DD-05: Azure resources use public service endpoints instead of private VNet integration.
+  * Plan specifies: The original design provisions a VNet, delegated subnets, private PostgreSQL DNS, and VNet-integrated Container Apps.
+  * Implementation differs: The network module is removed, PostgreSQL enables public network access with TLS and an Azure-services firewall rule, and Container Apps uses its default public environment network.
+  * Rationale: The user selected public connectivity on 2026-09-15 to reduce MVP infrastructure and deployment complexity. Application authentication, callback JWT validation, managed identity, TLS, and secret handling remain enforced.
 
 ## Implementation Paths Considered
 

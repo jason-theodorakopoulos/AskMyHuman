@@ -58,7 +58,7 @@ integration.
 * Async ACS Call Automation through an existing numbered ACS resource with Azure AI Play and Recognize
 * Microsoft Entra agent authentication and ACS callback JWT validation
 * Azure Monitor OpenTelemetry and Application Insights
-* One Container App replica, one PostgreSQL database, no other deployable process
+* One public-ingress Container App replica, one public-endpoint PostgreSQL database, no other deployable process
 * Modular Bicep with one single-owner composition root
 
 ### Parallel Execution Model
@@ -167,7 +167,7 @@ focused validation listed in the details before integration handoff.
 Run this phase concurrently with Phase 1A. Module owners use frozen interfaces
 and never edit the Bicep composition root.
 
-* [x] Step 1B.1: Implement private networking and PostgreSQL Flexible Server modules.
+* [x] Step 1B.1: Implement PostgreSQL Flexible Server with public network access and TLS.
   * Owner: Data infrastructure developer
   * Details: .copilot-tracking/details/2026-09-15/ask-my-human-tight-mvp-details.md (Lines 598-630)
 * [x] Step 1B.2: Implement managed identity, existing numbered ACS reference, Azure AI, and minimum role assignment modules.
@@ -176,7 +176,7 @@ and never edit the Bicep composition root.
 * [x] Step 1B.3: Implement Log Analytics and Application Insights with explicit retention.
   * Owner: Monitoring infrastructure developer
   * Details: .copilot-tracking/details/2026-09-15/ask-my-human-tight-mvp-details.md (Lines 669-698)
-* [x] Step 1B.4: Implement the VNet-integrated Container Apps environment, single app, Entra auth, probes, secrets, and one-replica limit.
+* [x] Step 1B.4: Implement the public Container Apps environment, single app, Entra auth, probes, secrets, and one-replica limit.
   * Owner: Compute infrastructure developer
   * Details: .copilot-tracking/details/2026-09-15/ask-my-human-tight-mvp-details.md (Lines 699-734)
 
