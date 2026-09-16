@@ -249,7 +249,8 @@ verify_revision() {
       .properties.template.containers[0].image == $image
     ' >/dev/null 2>&1 || fail 'intended revision does not run the expected immutable image'
     if printf '%s' "$revision" | jq -e '
-        .properties.active == true and .properties.runningState == "Running" and
+        .properties.active == true and
+        (.properties.runningState | IN("Running", "RunningAtMaxScale")) and
         .properties.healthState == "Healthy" and .properties.provisioningState == "Provisioned"
       ' >/dev/null 2>&1 && printf '%s' "$app" | jq -e --arg revision "$EXPECTED_REVISION" '
         .properties.latestReadyRevisionName == $revision and
@@ -258,6 +259,7 @@ verify_revision() {
           .weight] | add) == 100 and
         ([.properties.configuration.ingress.traffic[].weight] | add) == 100
       ' >/dev/null 2>&1; then
+      RUNNING_STATE="$(printf '%s' "$revision" | jq -er '.properties.runningState')"
       ready=true
       break
     fi
@@ -284,9 +286,10 @@ verify() {
   verify_revision
   jq -n --arg image "$CONTAINER_IMAGE" --arg revision "$EXPECTED_REVISION" \
     --arg endpoint "$SERVICE_URL" --arg source_sha "$SOURCE_SHA" \
+    --arg running_state "$RUNNING_STATE" \
     '{source:"az containerapp revision show", captured_at:(now | todateiso8601),
       source_sha:$source_sha, image:$image, revision:$revision, endpoint:$endpoint,
-      active:true, running_state:"Running", health_state:"Healthy", ready:true,
+      active:true, running_state:$running_state, health_state:"Healthy", ready:true,
       traffic_percent:100, authentication_verified:true, paid_calls_authorized:false}'
 }
 

@@ -81,7 +81,7 @@ class _Deployment(_EvidenceModel):
     image: str = Field(pattern=r"^\S+@sha256:[0-9a-f]{64}$")
     revision: str
     active: Literal[True]
-    running_state: Literal["Running"]
+    running_state: Literal["Running", "RunningAtMaxScale"]
     health_state: Literal["Healthy"]
     ready: Literal[True]
     traffic_percent: Literal[100]
