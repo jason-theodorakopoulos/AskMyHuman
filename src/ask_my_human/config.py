@@ -64,8 +64,12 @@ class Settings(BaseSettings):
 
         Every field is required on the model so callers can rely on complete,
         validated configuration, but pydantic-settings resolves each value
-        from the environment rather than from constructor arguments. This
-        factory documents that intentional zero-argument construction in one
-        place instead of a ``type: ignore[call-arg]`` at each call site.
+        from the environment rather than from constructor arguments, so mypy
+        cannot see that the zero-argument call is satisfied. There is no
+        mypy-visible way to express "populated by ``BaseSettings`` sources"
+        on a per-field basis without a custom mypy plugin, which is out of
+        scope for this MVP; this factory keeps the one unavoidable
+        ``type: ignore[call-arg]`` in a single, well-documented place instead
+        of repeating it at every call site.
         """
         return cls()  # type: ignore[call-arg]

@@ -64,6 +64,16 @@ def _parse_callback_events(payload: object) -> list[CallEvent]:
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """Acquire resources, compose routes once, and release resources on shutdown.
+
+    ASGI hosts (Uvicorn in production, ``TestClient`` in tests) enter this
+    context exactly once per running application instance, so resources such
+    as the connection pool, ACS client, and maintenance tasks are always
+    created and torn down in matching pairs. The ``app.state.composed`` guard
+    below only protects route/mount registration against being duplicated if
+    a caller re-enters the lifespan on the same ``FastAPI`` instance; it is
+    not a substitute for creating a fresh app per run.
+    """
     settings = Settings.from_env()
     telemetry = configure_observability()
 
