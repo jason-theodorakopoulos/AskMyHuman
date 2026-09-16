@@ -14,6 +14,7 @@ from azure.communication.callautomation.aio import CallAutomationClient
 from azure.identity.aio import DefaultAzureCredential
 from fastapi import FastAPI, Request
 from mcp.server.transport_security import TransportSecuritySettings
+from starlette.routing import Mount
 
 from ask_my_human.api.callbacks import create_callbacks_router
 from ask_my_human.api.health import create_readiness_router, liveness_router
@@ -121,17 +122,21 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         except Exception as error:
             raise AskMyHumanError(ErrorCode.UNAUTHENTICATED, "Invalid callback token") from error
 
-    app.include_router(liveness_router)
-    app.include_router(create_readiness_router(settings, pool.pool))
-    app.include_router(create_oauth_metadata_router(settings))
-    app.include_router(create_requests_router(use_case=service, authenticate=authenticate))
-    app.include_router(
-        create_callbacks_router(
-            use_case=service,
-            validate_token=validate_token,
-            parse_events=_parse_callback_events,
-        )
+    already_composed = any(
+        getattr(route, "path", None) == "/health/live" for route in app.router.routes
     )
+    if not already_composed:
+        app.include_router(liveness_router)
+        app.include_router(create_readiness_router(settings, pool.pool))
+        app.include_router(create_oauth_metadata_router(settings))
+        app.include_router(create_requests_router(use_case=service, authenticate=authenticate))
+        app.include_router(
+            create_callbacks_router(
+                use_case=service,
+                validate_token=validate_token,
+                parse_events=_parse_callback_events,
+            )
+        )
 
     mcp_server = create_mcp_server(service)
     transport_security = TransportSecuritySettings(
@@ -141,6 +146,8 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         streamable_http_path="/mcp",
         transport_security=transport_security,
     )
+    if already_composed:
+        app.router.routes = [route for route in app.router.routes if not isinstance(route, Mount)]
     app.mount("/", mcp_app)
 
     try:

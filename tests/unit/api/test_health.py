@@ -10,7 +10,7 @@ from ask_my_human.config import Settings
 def settings() -> Settings:
     return Settings.model_validate(
         {
-            "database_url": "******localhost:5432/askmyhuman",
+            "database_url": "postgresql://localhost:5432/askmyhuman",
             "acs_endpoint": "https://example.communication.azure.com",
             "acs_source_phone_number": "+15555550100",
             "my_mobile_number": "+15555550101",

@@ -8,7 +8,7 @@ from ask_my_human.config import Settings
 def test_oauth_protected_resource_metadata_is_exact_and_sanitized() -> None:
     configured = Settings.model_validate(
         {
-            "database_url": "******localhost:5432/askmyhuman",
+            "database_url": "postgresql://localhost:5432/askmyhuman",
             "acs_endpoint": "https://secret.communication.azure.com",
             "acs_source_phone_number": "+15555550100",
             "my_mobile_number": "+15555550101",
