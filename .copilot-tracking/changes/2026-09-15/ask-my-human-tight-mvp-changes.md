@@ -6,7 +6,7 @@
 * Date: 2026-09-15
 * Related plan: `.copilot-tracking/plans/2026-09-15/ask-my-human-tight-mvp-plan.instructions.md`
 * Implementation commit: `9322aa6` (merge of Phase 0 implementation)
-* Scope implemented: Implementation Phases 0, 1A, and 1B
+* Scope implemented: Implementation Phases 0, 1A, 1B, and 2
 
 ## Phase 0 Changes
 
@@ -152,12 +152,44 @@ Publication status:
 * All seven Phase 1B Bicep and support modules compiled with Bicep CLI 0.47.16 with zero warnings and zero errors.
 * Workspace diagnostics and `git diff --check` passed.
 
+## Phase 2 Changes
+
+### Step 2.1: ASGI Application Composition
+
+* Added `src/ask_my_human/main.py` as the sole composition root for settings, telemetry, Azure credentials, the ACS client, the PostgreSQL pool, the repository, the service, maintenance loops, HTTP routers, and the MCP transport.
+* Added one FastAPI lifespan that registers client cleanup, opens and waits for PostgreSQL, enters the MCP session manager, starts the expiry and purge loops, and closes every resource on shutdown even when one client fails.
+* Registered liveness, readiness, OAuth metadata, request, and callback routes before mounting the MCP application at `/` so `/mcp` never shadows `/v1` or metadata routes.
+* Added `tests/integration/test_asgi_app.py` covering readiness before and during the lifespan, liveness, OAuth metadata, authenticated and unauthenticated request handling, callback token validation and event dispatch, the mounted MCP initialize handshake, maintenance loop startup and shutdown, and callback payload parsing.
+* Modified `src/ask_my_human/config.py` so comma-separated list settings bypass the pydantic-settings JSON decoder.
+* Modified `pyproject.toml` and `uv.lock` to add the `aiohttp` runtime dependency required by the asynchronous Azure SDK transport.
+
+### Step 2.2: Bicep Deployment Composition
+
+* Verified the existing `infra/main.bicep` composition and `infra/environments/dev.bicepparam` bindings build with the Bicep CLI and expose no secure value as an output.
+
+## Phase 2 Validation
+
+* `uv run pytest` passed with 158 tests, including the new ASGI composition suite.
+* `uv run mypy src/ask_my_human/main.py tests/integration/test_asgi_app.py` reported no errors for the new files.
+* `uv run ruff format --check .` and `uv run ruff check .` passed.
+* `uv lock --check` and `uv run python scripts/export_schemas.py --check` passed.
+* `az bicep build --file infra/main.bicep` and `az bicep build-params --file infra/environments/dev.bicepparam` succeeded.
+* The deployed composition was smoke-checked by importing `ask_my_human.main:app` with the documented environment variables.
+
 ## Additional Or Deviating Changes
 
 * Extended internal domain and repository contracts for durable technical-error replay after process replacement.
   * Public request, result, and execution-error wire schemas remain unchanged.
 * Added two nested role-assignment support modules.
   * Bicep requires a nested deployment when assigning roles to existing ACS and ACR resources in another resource group or subscription.
+* Added `aiohttp` as a runtime dependency during Phase 2 integration.
+  * The asynchronous Azure Identity and Call Automation clients require the aiohttp transport, and `azure-core` 1.41 ships no httpx-based asynchronous transport.
+  * The manifest change was made once and `uv.lock` was regenerated rather than hand-merged.
+* Annotated the comma-separated settings with `NoDecode` in `src/ask_my_human/config.py`.
+  * pydantic-settings otherwise JSON-decodes sequence fields before the existing validator runs, so the deployed comma-separated environment values failed to load.
+  * The public setting names, types, and validation rules are unchanged.
+* Exposed the deployed `app` object through a module-level `__getattr__` in `src/ask_my_human/main.py`.
+  * This keeps the `ask_my_human.main:app` Uvicorn import string from the container image while letting tests import the module without a configured environment.
 * Replaced private VNet integration with public service endpoints for the tight MVP.
   * Removed `infra/modules/network.bicep`, subnet inputs, and private DNS inputs.
   * PostgreSQL permits Azure-hosted clients through the documented `0.0.0.0` Azure-services rule, not an unrestricted internet address range.
@@ -165,4 +197,4 @@ Publication status:
 
 ## Release Summary
 
-Phase 1A delivers all independently testable application implementations for persistence, orchestration, telephony, security, HTTP, health, OAuth metadata, MCP, and observability. Phase 1B delivers all independently compilable public-endpoint Azure infrastructure modules. Phase 2 composition remains intentionally unimplemented.
+Phase 1A delivers all independently testable application implementations for persistence, orchestration, telephony, security, HTTP, health, OAuth metadata, MCP, and observability. Phase 1B delivers all independently compilable public-endpoint Azure infrastructure modules. Phase 2 composes those workstreams into one ASGI application and one verified Bicep deployment.

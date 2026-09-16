@@ -180,17 +180,17 @@ and never edit the Bicep composition root.
   * Owner: Compute infrastructure developer
   * Details: .copilot-tracking/details/2026-09-15/ask-my-human-tight-mvp-details.md (Lines 699-734)
 
-### [ ] Implementation Phase 2: Parallel Integration
+### [x] Implementation Phase 2: Parallel Integration
 
 <!-- parallelizable: true -->
 
 Application and infrastructure integration run concurrently after their incoming
 workstreams pass scoped checks.
 
-* [ ] Step 2.1: Compose one ASGI application and lifespan from validated application exports.
+* [x] Step 2.1: Compose one ASGI application and lifespan from validated application exports.
   * Owner: Application integrator
   * Details: .copilot-tracking/details/2026-09-15/ask-my-human-tight-mvp-details.md (Lines 743-779)
-* [ ] Step 2.2: Compose the resource-group Bicep deployment and development parameter bindings.
+* [x] Step 2.2: Compose the resource-group Bicep deployment and development parameter bindings.
   * Owner: Infrastructure integrator
   * Details: .copilot-tracking/details/2026-09-15/ask-my-human-tight-mvp-details.md (Lines 780-811)
 
