@@ -256,6 +256,17 @@ async def create_azure_runtime(settings: Settings) -> Runtime:
     )
 
 
+def _transport_security(allowed_hosts: Sequence[str]) -> TransportSecuritySettings:
+    """Accept each configured host with or without an explicit port."""
+    hosts = [pattern for host in allowed_hosts for pattern in (host, f"{host}:*")]
+    origins = [f"{scheme}://{pattern}" for pattern in hosts for scheme in ("https", "http")]
+    return TransportSecuritySettings(
+        enable_dns_rebinding_protection=True,
+        allowed_hosts=hosts,
+        allowed_origins=origins,
+    )
+
+
 async def _stop_tasks(
     cancellation: _LifespanCancellation, tasks: Sequence[asyncio.Task[None]]
 ) -> None:
@@ -280,11 +291,7 @@ def create_app(
 
     mcp_app = create_streamable_http_app(
         use_case,
-        transport_security=TransportSecuritySettings(
-            enable_dns_rebinding_protection=True,
-            allowed_hosts=list(resolved.mcp_allowed_hosts),
-            allowed_origins=[f"https://{host}" for host in resolved.mcp_allowed_hosts],
-        ),
+        transport_security=_transport_security(resolved.mcp_allowed_hosts),
         host=resolved.mcp_allowed_hosts[0],
     )
 
