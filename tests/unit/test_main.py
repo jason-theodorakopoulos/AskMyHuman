@@ -3,10 +3,11 @@
 import asyncio
 import base64
 import json
-from collections.abc import Mapping
+from collections.abc import Mapping, MutableMapping
 from typing import Any
 from uuid import uuid4
 
+import httpx
 import pytest
 from support.fakes import FakeAskHumanUseCase
 
@@ -225,17 +226,44 @@ def test_configure_telemetry_exports_when_a_connection_string_is_present(
     assert captured == ["InstrumentationKey=00000000"]
 
 
+class _ClosingDouble:
+    """Record whether the composition root closed this client exactly once."""
+
+    def __init__(self, *args: object, **kwargs: object) -> None:
+        self.closed = 0
+
+    async def close(self) -> None:
+        self.closed += 1
+
+    async def aclose(self) -> None:
+        self.closed += 1
+
+
 @pytest.mark.asyncio
 async def test_create_azure_runtime_builds_and_closes_every_client(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     apply_environment(monkeypatch)
     settings = main.load_settings()
+    built: list[_ClosingDouble] = []
+
+    def record(*args: object, **kwargs: object) -> _ClosingDouble:
+        double = _ClosingDouble()
+        built.append(double)
+        return double
+
+    monkeypatch.setattr(main, "DefaultAzureCredential", record)
+    monkeypatch.setattr(main, "CallAutomationClient", record)
+    monkeypatch.setattr(httpx, "AsyncClient", record)
 
     runtime = await main.create_azure_runtime(settings)
+
+    assert len(built) == 3
+    assert [double.closed for double in built] == [0, 0, 0]
+
     await runtime.close()
 
-    assert runtime.pool.pool.closed is True
+    assert [double.closed for double in built] == [1, 1, 1]
     assert isinstance(runtime.telemetry, AzureMonitorTelemetry)
 
 
@@ -288,7 +316,7 @@ class _Signal:
         await asyncio.sleep(0)
 
 
-async def _receive() -> Mapping[str, Any]:  # pragma: no cover - never awaited
+async def _receive() -> MutableMapping[str, Any]:  # pragma: no cover - never awaited
     return {"type": "http.request"}
 
 

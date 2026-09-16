@@ -27,6 +27,9 @@ REQUIRED_VARIABLES=(
   ACS_CALLBACK_AUDIENCE
   MCP_ALLOWED_HOSTS
 )
+VERIFY_VARIABLES=(
+  AZURE_RESOURCE_GROUP
+)
 
 log() {
   printf '==> %s\n' "$1" >&2
@@ -38,9 +41,10 @@ fail() {
 }
 
 require_environment() {
+  # Verification only reads an existing app, so it must not demand deployment secrets.
   local missing=()
   local name
-  for name in "${REQUIRED_VARIABLES[@]}"; do
+  for name in "$@"; do
     if [[ -z "${!name:-}" ]]; then
       missing+=("$name")
     fi
@@ -49,7 +53,6 @@ require_environment() {
     fail "missing required environment variables: ${missing[*]}"
   fi
   command -v az >/dev/null || fail "the Azure CLI is required"
-  command -v git >/dev/null || fail "git is required"
   command -v curl >/dev/null || fail "curl is required"
 }
 
@@ -61,12 +64,12 @@ resolve_image() {
   # The full commit SHA keeps the deployed image immutable and traceable. An explicit
   # CONTAINER_IMAGE wins so that verify can target a revision built from another commit.
   if [[ -n "${CONTAINER_IMAGE:-}" ]]; then
-    CONTAINER_IMAGE_EXPLICIT=1
     EXPECTED_IMAGE="$CONTAINER_IMAGE"
     export CONTAINER_IMAGE
     return
   fi
-  CONTAINER_IMAGE_EXPLICIT=0
+  command -v git >/dev/null || fail "git is required"
+
   local sha
   sha="$(git_sha)"
   export CONTAINER_IMAGE="${CONTAINER_REGISTRY_SERVER}/${IMAGE_REPOSITORY}:${sha}"
@@ -191,14 +194,17 @@ service_url() {
 
 main() {
   local command="${1:-deploy}"
-  require_environment
-  resolve_image
 
   case "$command" in
     what-if)
+      require_environment "${REQUIRED_VARIABLES[@]}"
+      resolve_image
       run_what_if
       ;;
     deploy)
+      require_environment "${REQUIRED_VARIABLES[@]}"
+      resolve_image
+      command -v git >/dev/null || fail "git is required"
       run_what_if
       build_image
       deploy_bicep
@@ -209,9 +215,10 @@ main() {
       log "Deployment verified. Live calls may now run against $(service_url "$app")"
       ;;
     verify)
+      require_environment "${VERIFY_VARIABLES[@]}"
       # Verification reports whichever image the ready revision runs unless the caller
       # pins an expectation by exporting CONTAINER_IMAGE.
-      ((CONTAINER_IMAGE_EXPLICIT == 1)) || EXPECTED_IMAGE=""
+      EXPECTED_IMAGE="${CONTAINER_IMAGE:-}"
       local existing
       existing="$(existing_container_app_name)"
       verify_revision "$existing"

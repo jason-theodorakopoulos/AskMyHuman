@@ -63,8 +63,8 @@ scripts/deploy_azure.sh deploy    # what-if, ACR build, Bicep deploy, revision a
 scripts/deploy_azure.sh verify    # Re-verify the deployed revision later
 ```
 
-`verify` resolves the container app from the resource group, so it works from any
-commit; set `CONTAINER_APP_NAME` when the group holds more than one app, and set
+`verify` only needs `AZURE_RESOURCE_GROUP` and resolves the container app from that
+group, so it works from any commit without deployment secrets; set `CONTAINER_APP_NAME` when the group holds more than one app, and set
 `CONTAINER_IMAGE` to assert that a specific image is running.
 
 `deploy` tags the image with the full Git commit SHA, so every revision is

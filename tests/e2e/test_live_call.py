@@ -298,7 +298,7 @@ async def test_live_one_call_and_one_terminal_row_per_idempotency_key(
 
 async def _await_terminal(
     repository: PostgresRequestRepository, pool: PostgresPool, idempotency_key: UUID
-) -> "HumanRequest":
+) -> HumanRequest:
     """Wait for the request stored under an idempotency key to leave the pending state.
 
     A cancelled client never reads the response body, so the request identifier
