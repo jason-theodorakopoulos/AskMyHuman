@@ -321,3 +321,24 @@ def test_callback_payload_parsing_skips_non_terminal_events() -> None:
 
     with pytest.raises(ValueError):
         parse_callback_events({"not": "a list"})
+
+
+@pytest.mark.asyncio
+async def test_failing_client_close_still_closes_every_client(composition: Composition) -> None:
+    async def failing_close() -> None:
+        composition.closed.append("acs")
+        raise RuntimeError("client shutdown failed")
+
+    async def close_http() -> None:
+        composition.closed.append("http")
+
+    components = composition.components()
+    components.closers = (failing_close, close_http)
+    app = create_app(components)
+
+    with pytest.raises(BaseExceptionGroup):
+        async with app.router.lifespan_context(app):
+            pass
+
+    assert composition.closed == ["acs", "http"]
+    assert composition.pool.events == ["open", "close"]

@@ -35,7 +35,7 @@ from ask_my_human.telephony.events import parse_callback_event
 
 PRINCIPAL_HEADER = "x-ms-client-principal"
 
-_app: FastAPI | None = None
+_cached_app: FastAPI | None = None
 
 
 class PoolLifecycle(Protocol):
@@ -177,7 +177,6 @@ def create_app(components: ApplicationComponents | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         shutdown = ShutdownSignal()
-        maintenance_tasks: list[asyncio.Task[None]] = []
         async with AsyncExitStack() as stack:
             # Register client cleanup before opening the pool so a failed open leaks nothing.
             stack.push_async_callback(_close_all, resolved.closers)
@@ -218,8 +217,14 @@ def create_app(components: ApplicationComponents | None = None) -> FastAPI:
 
 
 async def _close_all(closers: Sequence[Callable[[], Awaitable[None]]]) -> None:
+    failures: list[BaseException] = []
     for close in closers:
-        await close()
+        try:
+            await close()
+        except Exception as failure:  # Close every remaining client before reporting.
+            failures.append(failure)
+    if failures:
+        raise BaseExceptionGroup("client shutdown failed", failures)
 
 
 async def _stop_tasks(shutdown: ShutdownSignal, tasks: Sequence[asyncio.Task[None]]) -> None:
@@ -234,9 +239,9 @@ async def _stop_tasks(shutdown: ShutdownSignal, tasks: Sequence[asyncio.Task[Non
 def __getattr__(name: str) -> Any:
     # Build the deployed application lazily and once, so importing needs no environment
     # and repeated access never creates a second set of clients.
-    global _app
+    global _cached_app
     if name == "app":
-        if _app is None:
-            _app = create_app()
-        return _app
+        if _cached_app is None:
+            _cached_app = create_app()
+        return _cached_app
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

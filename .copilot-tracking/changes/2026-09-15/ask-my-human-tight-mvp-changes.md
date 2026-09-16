@@ -157,7 +157,7 @@ Publication status:
 ### Step 2.1: ASGI Application Composition
 
 * Added `src/ask_my_human/main.py` as the sole composition root for settings, telemetry, Azure credentials, the ACS client, the PostgreSQL pool, the repository, the service, maintenance loops, HTTP routers, and the MCP transport.
-* Added one FastAPI lifespan that opens and waits for PostgreSQL, enters the MCP session manager, starts the expiry and purge loops, and closes every resource in reverse order.
+* Added one FastAPI lifespan that registers client cleanup, opens and waits for PostgreSQL, enters the MCP session manager, starts the expiry and purge loops, and closes every resource on shutdown even when one client fails.
 * Registered liveness, readiness, OAuth metadata, request, and callback routes before mounting the MCP application at `/` so `/mcp` never shadows `/v1` or metadata routes.
 * Added `tests/integration/test_asgi_app.py` covering readiness before and during the lifespan, liveness, OAuth metadata, authenticated and unauthenticated request handling, callback token validation and event dispatch, the mounted MCP initialize handshake, maintenance loop startup and shutdown, and callback payload parsing.
 * Modified `src/ask_my_human/config.py` so comma-separated list settings bypass the pydantic-settings JSON decoder.
