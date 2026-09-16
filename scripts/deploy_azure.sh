@@ -151,7 +151,7 @@ what_if() {
     def changes: if has("changes") then .changes else .properties.changes end;
     if .status != "Succeeded" or (changes | type != "array") then error("invalid what-if") else
       [changes[] | {
-        resource_id: (.resourceId | if type == "string" and test("^/subscriptions/[A-Za-z0-9/_.-]+$")
+        resource_id: (.resourceId | if type == "string" and test("^/subscriptions/[A-Za-z0-9/_.() -]+$")
           then . else error("invalid resource ID") end),
         resource_type: (.resourceId | split("/providers/") | last | split("/") |
           [to_entries[] | select(.key == 0 or .key % 2 == 1) | .value] | join("/")),
