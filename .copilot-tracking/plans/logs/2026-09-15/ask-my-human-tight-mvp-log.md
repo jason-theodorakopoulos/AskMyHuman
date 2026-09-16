@@ -58,6 +58,10 @@ implementation plan.
   * Plan specifies: The original design provisions a VNet, delegated subnets, private PostgreSQL DNS, and VNet-integrated Container Apps.
   * Implementation differs: The network module is removed, PostgreSQL enables public network access with TLS and an Azure-services firewall rule, and Container Apps uses its default public environment network.
   * Rationale: The user selected public connectivity on 2026-09-15 to reduce MVP infrastructure and deployment complexity. Application authentication, callback JWT validation, managed identity, TLS, and secret handling remain enforced.
+* DD-06: Phase 2 integration added the `aiohttp` runtime dependency and relaxed list-setting decoding.
+  * Plan specifies: Composition wires validated exports without manifest or configuration changes.
+  * Implementation differs: `pyproject.toml` gained `aiohttp`, `uv.lock` was regenerated once, and the comma-separated settings use `NoDecode`.
+  * Rationale: The asynchronous Azure SDK clients need the aiohttp transport, and pydantic-settings JSON-decoded the list fields before their validator, so the deployed environment values could not load. Both defects only surface when real adapters are composed.
 
 ## Implementation Paths Considered
 
@@ -140,6 +144,10 @@ implementation plan.
 * WI-05: Evaluate horizontal scaling and distributed MCP session handling (low priority, medium effort).
   * Source: DD-02
   * Dependency: Load evidence exceeding one-request-at-a-time MVP capacity
+
+* WI-06: Clear the pre-existing strict mypy failures in Phase 0 and Phase 1 modules and tests (medium priority, small effort).
+  * Source: Phase 2, Step 2.1 validation
+  * Dependency: None; `uv run mypy src tests` already reported 36 errors in eight files before Phase 2 began, and the Phase 2 files add none.
 
 ## Validation Status
 
