@@ -107,7 +107,7 @@ def parse_callback_events(payload: object) -> Sequence[CallEvent]:
 
 def load_settings() -> Settings:
     """Read every setting from the process environment exactly once."""
-    return Settings()  # type: ignore[call-arg]
+    return Settings()
 
 
 def build_components(settings: Settings) -> ApplicationComponents:
