@@ -45,6 +45,7 @@ class CallEvent:
     answer: str | None = None
     call_id: str | None = None
     acs_code: int | None = None
+    event_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

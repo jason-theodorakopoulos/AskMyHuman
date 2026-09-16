@@ -1,12 +1,14 @@
 from collections.abc import Sequence
+from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
-from support.fakes import FakeAskHumanUseCase
+from support.fakes import FakeAskHumanUseCase, FakeTelemetry
 
 from ask_my_human.api.callbacks import create_callbacks_router
+from ask_my_human.application.ports import TelemetryOperation
 from ask_my_human.domain.models import CallEvent, CallEventType
 from ask_my_human.errors import AskMyHumanError, ErrorCode
 
@@ -19,6 +21,7 @@ def app_for(
     use_case: FakeAskHumanUseCase,
     validate_token: object,
     parse_events: object,
+    telemetry: FakeTelemetry | None = None,
 ) -> FastAPI:
     app = FastAPI()
     app.include_router(
@@ -26,6 +29,7 @@ def app_for(
             use_case=use_case,
             validate_token=validate_token,  # type: ignore[arg-type]
             parse_events=parse_events,  # type: ignore[arg-type]
+            telemetry=telemetry,
         )
     )
     return app
@@ -111,7 +115,14 @@ async def test_authenticated_events_are_delegated_to_use_case() -> None:
 
 @pytest.mark.asyncio
 async def test_authenticated_duplicate_and_late_callbacks_return_200() -> None:
-    event = CallEvent(request_id=uuid4(), event_type=CallEventType.DISCONNECTED)
+    event = CallEvent(
+        request_id=uuid4(),
+        event_type=CallEventType.DISCONNECTED,
+        call_id="provider-call",
+        event_id="provider-event",
+    )
+    telemetry = FakeTelemetry()
+    started = datetime.now(UTC)
 
     async def validate(_token: str) -> None:
         return None
@@ -121,7 +132,8 @@ async def test_authenticated_duplicate_and_late_callbacks_return_200() -> None:
 
     use_case = FakeAskHumanUseCase()
     async with AsyncClient(
-        transport=ASGITransport(app=app_for(use_case, validate, parse)), base_url="http://test"
+        transport=ASGITransport(app=app_for(use_case, validate, parse, telemetry)),
+        base_url="http://test",
     ) as client:
         first = await client.post(
             "/v1/callbacks/acs",
@@ -137,3 +149,51 @@ async def test_authenticated_duplicate_and_late_callbacks_return_200() -> None:
     assert first.status_code == 200
     assert duplicate.status_code == 200
     assert use_case.events == [event, event]
+    assert len(telemetry.records) == 2
+    assert telemetry.records[0]["delivery_id"] != telemetry.records[1]["delivery_id"]
+    for record in telemetry.records:
+        assert record["operation"] is TelemetryOperation.CALLBACK_ACCEPTED
+        assert record["request_id"] == event.request_id
+        assert record["call_id"] == event.call_id
+        assert record["event_id"] == event.event_id
+        assert isinstance(record["received_at"], datetime)
+        assert started <= record["received_at"] <= datetime.now(UTC)
+
+
+@pytest.mark.asyncio
+async def test_partially_processed_batch_does_not_record_acceptance() -> None:
+    event = CallEvent(
+        request_id=uuid4(),
+        event_type=CallEventType.DISCONNECTED,
+        call_id="provider-call",
+        event_id="provider-event",
+    )
+    telemetry = FakeTelemetry()
+
+    class FailingUseCase(FakeAskHumanUseCase):
+        async def handle_call_event(self, event: CallEvent) -> None:
+            if self.events:
+                raise RuntimeError("answer-SENSITIVE")
+            await super().handle_call_event(event)
+
+    async def validate(_token: str) -> None:
+        return None
+
+    def parse(_payload: object) -> Sequence[CallEvent]:
+        return [event, event]
+
+    use_case = FailingUseCase()
+    async with AsyncClient(
+        transport=ASGITransport(app=app_for(use_case, validate, parse, telemetry)),
+        base_url="http://test",
+    ) as client:
+        response = await client.post(
+            "/v1/callbacks/acs",
+            headers={"Authorization": "Bearer signed-token"},
+            json=callback_body(),
+        )
+
+    assert response.status_code == 500
+    assert use_case.events == [event]
+    assert telemetry.records == []
+    assert "SENSITIVE" not in response.text

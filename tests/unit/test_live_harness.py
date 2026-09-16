@@ -7,6 +7,7 @@ import socket
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
@@ -18,20 +19,36 @@ from fastapi import FastAPI
 from support.fakes import FakeAskHumanUseCase
 from unit.test_deploy_script import Deployment
 from unit.test_deploy_script import deployment as deployment
+from unit.test_harvest_live_evidence import ACS_RESOURCE, APP_RESOURCE, REVISION, WORKSPACE
 
 from ask_my_human.api.requests import create_requests_router
 from ask_my_human.contracts import AskHumanRequest, AskHumanResult, Outcome, RequestStatus
 from ask_my_human.domain.models import HumanRequest, Principal, RequestState
+from ask_my_human.live_evidence import (
+    ApplicationEvidence,
+    CallbackDelivery,
+    CallCorrelation,
+    EvidenceSnapshot,
+    ProviderAttempt,
+    ProviderEvidence,
+)
 
 
 @pytest.fixture(autouse=True)
-def no_network(monkeypatch: pytest.MonkeyPatch) -> None:
+async def no_network(monkeypatch: pytest.MonkeyPatch) -> None:
     def blocked(*args: object, **kwargs: object) -> None:
         raise AssertionError("Network and credential access are forbidden in harness unit tests.")
 
     monkeypatch.setattr(socket.socket, "connect", blocked)
     monkeypatch.setattr(harness, "ClientSecretCredential", blocked)
     monkeypatch.delenv("RUN_LIVE_AZURE_TESTS", raising=False)
+
+
+def test_network_and_credential_guard_remains_active() -> None:
+    with socket.socket() as connection, pytest.raises(AssertionError, match="forbidden"):
+        connection.connect(("127.0.0.1", 1))
+    with pytest.raises(AssertionError, match="forbidden"):
+        harness.ClientSecretCredential("dummy", "dummy", "dummy")
 
 
 def _body(**changes: object) -> dict[str, object]:
@@ -149,9 +166,12 @@ def _evidence() -> tuple[dict[str, object], dict[str, object]]:
         "database_isolated": True,
         "decisions": {f"DR-0{number}": "approved-record" for number in range(1, 6)},
         "scenarios": {"test_example": "setup-record"},
-        "provider_evidence_file": "/dummy/provider.json",
-        "telemetry_workspace": "dummy-workspace",
-        "telemetry_evidence_file": "/dummy/telemetry.json",
+        "evidence_file": "/dummy/evidence.json",
+        "evidence_review_file": "/dummy/review.json",
+        "evidence_reviewer": "approved-reviewer",
+        "acs_resource_id": ACS_RESOURCE,
+        "application_insights_resource_id": APP_RESOURCE,
+        "telemetry_workspace": str(WORKSPACE),
         "telemetry_settle_seconds": 60,
         "mcp_timeout_seconds": 225,
     }
@@ -340,23 +360,44 @@ def _stored() -> HumanRequest:
     )
 
 
-def _provider(stored: HumanRequest, *, attempts: int = 1) -> harness._ProviderEvidence:
+def _provider(stored: HumanRequest, *, attempts: int = 1) -> EvidenceSnapshot:
     now = datetime.now(tz=UTC)
-    return harness._ProviderEvidence(
-        source="acs-http-dependency",
+    call_hash = sha256(b"dummy-call").hexdigest()
+    return EvidenceSnapshot(
         record="export-record",
-        revision="reviewed-revision",
+        revision=REVISION,
+        workspace=WORKSPACE,
+        acs_resource_id=ACS_RESOURCE,
+        application_insights_resource_id=APP_RESOURCE,
         window_start=now - timedelta(minutes=5),
-        complete_through=now,
-        attempts=[
-            harness._Attempt(
-                request_id=stored.request_id,
-                attempt_id=f"attempt-{number}",
-                call_id="dummy-call",
-            )
-            for number in range(attempts)
-        ],
-        deliveries=[],
+        window_end=now,
+        queried_at=now,
+        provider_query_sha256="a" * 64,
+        application_query_sha256="b" * 64,
+        provider=ProviderEvidence(
+            attempts=[
+                ProviderAttempt(
+                    call_id_sha256=call_hash,
+                    correlation_id_sha256="c" * 64,
+                    observed_at=now,
+                    result_code=201,
+                )
+                for _ in range(attempts)
+            ]
+        ),
+        application=ApplicationEvidence(
+            correlations=[
+                CallCorrelation(
+                    request_id=stored.request_id,
+                    call_id_sha256=call_hash,
+                    observed_at=now,
+                )
+            ]
+            if attempts
+            else [],
+            deliveries=[],
+            pending_joins=[],
+        ),
     )
 
 
@@ -410,38 +451,121 @@ def test_cancellation_rejects_deadline_or_late_result(elapsed: float) -> None:
 def test_duplicate_callback_requires_distinct_delivery_after_terminal(copies: int) -> None:
     stored = _stored()
     evidence = _provider(stored)
-    terminal_at = datetime.now(tz=UTC)
-    evidence.deliveries = [
-        harness._Delivery(
+    terminal_at = evidence.window_end - timedelta(seconds=2)
+    evidence.application.deliveries = [
+        CallbackDelivery(
             request_id=stored.request_id,
-            call_id="dummy-call",
-            event_id="same-event",
-            delivery_id=f"delivery-{number}",
+            call_id_sha256=sha256(b"dummy-call").hexdigest(),
+            event_id_sha256=sha256(b"same-event").hexdigest(),
+            delivery_id=uuid4(),
             received_at=terminal_at - timedelta(seconds=1),
-            accepted=True,
+            observed_at=terminal_at - timedelta(seconds=1),
         )
-        for number in range(copies)
+        for _ in range(copies)
     ]
     with pytest.raises(AssertionError, match="duplicate"):
         harness._assert_duplicate_evidence(evidence, stored, terminal_at)
 
 
-def test_duplicate_callback_accepts_provider_receipts() -> None:
+def test_duplicate_callback_accepts_application_receipts() -> None:
     stored = _stored()
     evidence = _provider(stored)
-    terminal_at = datetime.now(tz=UTC)
-    evidence.deliveries = [
-        harness._Delivery(
+    terminal_at = evidence.window_end - timedelta(seconds=2)
+    evidence.application.deliveries = [
+        CallbackDelivery(
             request_id=stored.request_id,
-            call_id="dummy-call",
-            event_id="same-event",
-            delivery_id=f"delivery-{number}",
+            call_id_sha256=sha256(b"dummy-call").hexdigest(),
+            event_id_sha256=sha256(b"same-event").hexdigest(),
+            delivery_id=uuid4(),
             received_at=terminal_at + timedelta(seconds=number),
-            accepted=True,
+            observed_at=terminal_at + timedelta(seconds=number),
         )
         for number in range(2)
     ]
     harness._assert_duplicate_evidence(evidence, stored, terminal_at)
+
+
+@pytest.mark.parametrize("mutate", [False, True])
+def test_harness_requires_the_approved_review_of_exact_export_bytes(
+    tmp_path: Path,
+    mutate: bool,
+) -> None:
+    evidence = _provider(_stored())
+    raw = evidence.model_dump_json().encode()
+    snapshot_file = tmp_path / "evidence.json"
+    review_file = tmp_path / "review.json"
+    snapshot_file.write_bytes(raw + (b"\n" if mutate else b""))
+    review_file.write_text(
+        json.dumps(
+            {
+                "source": "operator-export-review",
+                "record": "review-record",
+                "reviewer": "approved-reviewer",
+                "snapshot_sha256": sha256(raw).hexdigest(),
+                "reviewed_at": datetime.now(tz=UTC).isoformat(),
+                "diagnostics_verified": True,
+                "sampling_disabled": True,
+                "ingestion_checked": True,
+                "late_arrival_risk_accepted": True,
+            }
+        )
+    )
+    approval, _ = _evidence()
+    approval.update({"evidence_file": str(snapshot_file), "evidence_review_file": str(review_file)})
+    parsed = harness._Approval.model_validate_json(json.dumps(approval))
+    if mutate:
+        with pytest.raises(AssertionError, match="Reviewed"):
+            harness._read_evidence(parsed)
+        assert (
+            harness._read_interval_evidence(
+                parsed, started=evidence.window_start, finished=evidence.window_end
+            )
+            is None
+        )
+    else:
+        assert harness._read_evidence(parsed) == evidence
+        assert (
+            harness._read_interval_evidence(
+                parsed, started=evidence.window_start, finished=evidence.window_end
+            )
+            == evidence
+        )
+
+
+async def test_evidence_refresh_waits_for_a_matching_review_and_full_interval(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    evidence = _provider(_stored())
+    approval, _ = _evidence()
+    parsed = harness._Approval.model_validate_json(json.dumps(approval))
+    earlier = evidence.model_copy(update={"window_end": evidence.window_end - timedelta(seconds=1)})
+    read = MagicMock(side_effect=[AssertionError("review not yet published"), earlier, evidence])
+    pause = AsyncMock()
+    monkeypatch.setattr(harness, "_read_evidence", read)
+    monkeypatch.setattr(asyncio, "sleep", pause)
+    assert (
+        await harness._await_evidence(
+            parsed, started=evidence.window_start, finished=evidence.window_end
+        )
+        == evidence
+    )
+    assert read.call_count == 3
+    assert pause.await_count == 2
+
+
+def test_evidence_refresh_rejects_a_window_missing_the_scenario_start(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    evidence = _provider(_stored())
+    approval, _ = _evidence()
+    parsed = harness._Approval.model_validate_json(json.dumps(approval))
+    monkeypatch.setattr(harness, "_read_evidence", MagicMock(return_value=evidence))
+    with pytest.raises(AssertionError, match="misses the start"):
+        harness._read_interval_evidence(
+            parsed,
+            started=evidence.window_start - timedelta(seconds=1),
+            finished=evidence.window_end,
+        )
 
 
 @pytest.mark.parametrize(
@@ -544,8 +668,7 @@ def test_preflight_uses_cost_free_dummy_requests(
             transport=mock_transport,
         ),
     )
-    monkeypatch.setattr(harness, "_read_provider", MagicMock())
-    monkeypatch.setattr(harness, "_telemetry_watermark", MagicMock())
+    monkeypatch.setattr(harness, "_read_evidence", MagicMock())
     monkeypatch.setattr(harness, "_required_env", MagicMock(return_value="dummy-value"))
     monkeypatch.setattr(harness, "ClientSecretCredential", MagicMock())
     query = MagicMock()
@@ -694,7 +817,7 @@ async def test_privacy_gate_rejects_every_sensitive_category_and_delayed_ingesti
     monkeypatch.setattr(harness, "AsyncClientSecretCredential", MagicMock())
     monkeypatch.setattr(harness, "LogsQueryClient", MagicMock())
     monkeypatch.setattr(harness, "_telemetry_count", count)
-    monkeypatch.setattr(harness, "_telemetry_watermark", lambda approval: datetime.now(tz=UTC))
+    monkeypatch.setattr(harness, "_read_interval_evidence", MagicMock(return_value=None))
     monkeypatch.setattr(asyncio, "sleep", AsyncMock())
     client = MagicMock()
     client.post = callback

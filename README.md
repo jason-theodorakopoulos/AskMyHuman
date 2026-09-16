@@ -363,12 +363,107 @@ RUN_LIVE_AZURE_TESTS=1 uv run pytest -m live tests/e2e/test_live_call.py -vv
 They additionally require `LIVE_BASE_URL`, `LIVE_API_SCOPE`,
 `LIVE_AGENT_TENANT_ID`, `LIVE_AGENT_CLIENT_ID`, `LIVE_AGENT_CLIENT_SECRET`,
 and `DATABASE_URL`. `LIVE_APPROVAL_JSON` supplies approved scenarios, isolated
-database binding, retention, provider-evidence and telemetry inputs;
+database binding, retention, and reviewed evidence bindings;
 `LIVE_DEPLOYMENT_EVIDENCE_JSON` consumes the helper's successful `verify` output.
-These JSON values are validated against the evidence models in
+These approval and deployment JSON values are validated by
 [tests/e2e/test_live_call.py](tests/e2e/test_live_call.py). Missing, stale, or
 mismatched evidence blocks calls. Each test docstring specifies the scenario
 setup; privacy checks also require the configured sensitive sentinel inputs.
+
+### Live Evidence Exports
+
+[scripts/harvest_live_evidence.py](scripts/harvest_live_evidence.py) is a read-only
+operator tool. It queries Log Analytics using `DefaultAzureCredential`, never
+reads the application database, never places calls, and never creates an approval.
+The operator needs read access to the specified workspace and both source tables.
+Use existing authorized activity to establish table availability; missing tables
+are a blocker, not permission to make a bootstrap call.
+
+```bash
+uv run python scripts/harvest_live_evidence.py \
+  --workspace "$LOG_ANALYTICS_WORKSPACE_ID" \
+  --revision "$VERIFIED_REVISION" \
+  --acs-resource-id "$EXISTING_ACS_RESOURCE_ID" \
+  --application-insights-resource-id "$APPLICATION_INSIGHTS_RESOURCE_ID" \
+  --window-start "$EVIDENCE_WINDOW_START" \
+  --window-end "$EVIDENCE_WINDOW_END" \
+  --record "$EVIDENCE_RECORD" \
+  --output "$EVIDENCE_OUTPUT"
+```
+
+The workspace value is its customer/workspace UUID, not its ARM resource ID.
+Timestamps must include a UTC offset, the end cannot be in the future, and the
+output must be a new file in an existing directory. Keep exports and reviews in
+an ignored or external operator directory. Record values are references only;
+do not put prompts, answers, phone numbers, credentials, or connection strings in them.
+
+The shared contract is in
+[src/ask_my_human/live_evidence.py](src/ask_my_human/live_evidence.py):
+
+* `provider` contains only `acs-provider` rows from
+  `ACSCallAutomationIncomingOperations`, including hashed call/correlation IDs,
+  time, and result code. Each CreateCall result row is retained, even when IDs
+  repeat. Media `OperationId` is not an application request or attempt ID.
+* `application` contains separate `application-observations`: call-to-request
+  links, accepted callback deliveries, and pending joins. Provider call and event
+  IDs are SHA-256 hashed before application export. Receipt UUIDs identify HTTP
+  deliveries; accepted means the authenticated batch completed in the application,
+  not that ACS received the HTTP response or that a callback changed stored state.
+* The query is bound to explicit resources, revision (`AppVersion` from
+  `CONTAINER_APP_REVISION`), and time bounds. Missing/conflicting correlations,
+  sampled rows, partial responses, unexpected schemas, and more than 10,000 rows
+  per source fail closed. Other callers or revisions in the ACS window can cause
+  a reconciliation failure; do not drop those rows to obtain a pass.
+
+An export is a **bounded snapshot, not proof of complete ingestion**. Neither
+`queried_at`, a maximum ingestion timestamp, nor a quiet delay proves that no
+late records will arrive. After reviewing diagnostics, sampling settings (including
+`OTEL_TRACES_SAMPLER` overrides and ingestion sampling), source coverage, and
+ingestion health, the authorized reviewer supplies a separate JSON review:
+
+```json
+{
+  "source": "operator-export-review",
+  "record": "<review-record>",
+  "reviewer": "<approved-reviewer>",
+  "snapshot_sha256": "<SHA-256 printed by the harvester>",
+  "reviewed_at": "<UTC timestamp after the export>",
+  "diagnostics_verified": false,
+  "sampling_disabled": false,
+  "ingestion_checked": false,
+  "late_arrival_risk_accepted": false
+}
+```
+
+This deliberately non-passing template is not approval. Set each flag to JSON
+`true` only after the stated check and explicit acceptance of the remaining
+late-arrival risk. The harness rejects missing/coerced flags, an unapproved
+reviewer, future reviews, and changes to even one export byte.
+
+`LIVE_APPROVAL_JSON` must bind `evidence_file`, `evidence_review_file`,
+`evidence_reviewer`, `acs_resource_id`, `application_insights_resource_id`, and
+`telemetry_workspace`, as well as its existing deployment, database, decision,
+and scenario fields. Old provider/telemetry files with `complete_through` are
+not accepted. Have a reviewed preflight snapshot before starting, then export
+and review a window covering the entire selected scenario. The harness waits
+up to 180 seconds for the reviewed evidence; run scenarios individually when
+manual review needs coordination. Keep the window start before the test invocation,
+not just before an observed provider call. Continue reviewing through fixture
+teardown: a scenario's intermediate evidence may need a later snapshot for its
+final call audit.
+
+Preserve every generated export and review under unique archive names. To refresh
+the stable paths bound in `LIVE_APPROVAL_JSON`, stage byte-for-byte copies beside
+those paths and replace each active file with a same-directory rename. Updating
+two files is not atomic; the harness retries temporarily missing or mismatched
+pairs within its existing timeout and accepts only a matching reviewed pair.
+Complete both replacements before that timeout expires. Never edit snapshot
+bytes after review; a replacement export needs a new review hash.
+
+Exactly-one-call and sentinel-absence findings apply to the reviewed observation
+window and its documented late-arrival limitation. They are not an assertion
+that Azure supplied a global completeness watermark. Diagnostics deployment,
+the isolated database, carrier setup, and paid-call approval remain separate gates.
 
 The harness is implemented but live acceptance has not been executed. Release evidence must distinguish
 approval, rejection, a nonblank spoken answer, initial silence, no answer,

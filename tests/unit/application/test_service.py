@@ -85,7 +85,8 @@ async def test_creator_starts_one_call_and_fixed_cutoff_expires() -> None:
     repository = FakeRequestRepository()
     gateway = FakeCallAutomationGateway()
     clock = FakeClock(datetime(2026, 1, 1, tzinfo=UTC))
-    result = await make_service(repository, gateway, clock).ask(
+    telemetry = FakeTelemetry()
+    result = await AskHumanService(repository, gateway, clock, telemetry).ask(
         Principal("subject", "app"), make_request(), FakeCancellationSignal()
     )
     assert result.status is RequestStatus.EXPIRED
@@ -94,6 +95,14 @@ async def test_creator_starts_one_call_and_fixed_cutoff_expires() -> None:
     assert gateway.hung_up == [f"call-{result.request_id}"]
     assert gateway.recognitions == []
     assert clock.current == datetime(2026, 1, 1, tzinfo=UTC) + timedelta(seconds=205)
+    correlations = [
+        record
+        for record in telemetry.records
+        if record["operation"] is TelemetryOperation.CALL_CREATED
+    ]
+    assert len(correlations) == 1
+    assert correlations[0]["request_id"] == result.request_id
+    assert correlations[0]["call_id"] == f"call-{result.request_id}"
 
 
 @pytest.mark.asyncio
@@ -141,7 +150,9 @@ async def test_joined_waiter_cancellation_does_not_affect_shared_call() -> None:
     request = make_request()
     principal = Principal("subject", "app")
     clock = FakeClock()
-    service = make_service(repository, FakeCallAutomationGateway(), clock)
+    gateway = FakeCallAutomationGateway()
+    telemetry = FakeTelemetry()
+    service = AskHumanService(repository, gateway, clock, telemetry)
     await repository.create_or_replay(
         principal,
         request,
@@ -155,6 +166,16 @@ async def test_joined_waiter_cancellation_does_not_affect_shared_call() -> None:
     stored = await repository.get(request.idempotency_key)
     assert stored is not None
     assert stored.result is None
+    assert gateway.created == []
+    observations = [
+        record
+        for record in telemetry.records
+        if record["operation"] is TelemetryOperation.JOIN_PENDING
+    ]
+    assert len(observations) == 1
+    assert observations[0]["request_id"] == stored.request_id
+    assert observations[0]["replay"] is True
+    assert observations[0]["status"] is None
 
 
 @pytest.mark.asyncio
@@ -685,7 +706,13 @@ async def test_real_work_runs_inside_telemetry_spans() -> None:
     )
     assert result.outcome is Outcome.APPROVED
     assert telemetry.pending[0] is True and telemetry.pending[-1] is False
-    assert {operation for operation, _ in telemetry.spans} == set(TelemetryOperation)
+    assert {operation for operation, _ in telemetry.spans} == {
+        TelemetryOperation.ASK,
+        TelemetryOperation.CALLBACK,
+        TelemetryOperation.REPOSITORY,
+        TelemetryOperation.CREATE_CALL,
+        TelemetryOperation.RECOGNIZE,
+    }
     assert telemetry.active_spans == []
 
 
@@ -839,7 +866,11 @@ async def test_composed_telemetry_exports_real_spans_metrics_and_no_sensitive_de
                 Principal("subject-SENSITIVE", "app-SENSITIVE"), request, FakeCancellationSignal()
             )
         spans = exporter.get_finished_spans()
-        assert {span.name for span in spans} == {name.value for name in SpanName}
+        assert {span.name for span in spans} == {
+            name.value
+            for name in SpanName
+            if name not in {SpanName.JOIN_PENDING, SpanName.CALLBACK_ACCEPTED}
+        }
         assert all(span.end_time is not None and span.start_time is not None for span in spans)
         assert observed_pending == [1]
         metric_data = reader.get_metrics_data()
