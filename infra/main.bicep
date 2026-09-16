@@ -78,6 +78,7 @@ module communications 'modules/communications.bicep' = {
 		existingAcsResourceId: existingAcsResourceId
 		containerIdentityPrincipalId: identity.outputs.principalId
 		containerIdentityResourceId: identity.outputs.identityResourceId
+		logAnalyticsWorkspaceId: observability.outputs.logAnalyticsWorkspaceId
 	}
 }
 

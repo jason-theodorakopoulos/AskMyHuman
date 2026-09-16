@@ -73,6 +73,7 @@ def test_sanitized_callback_fixture(
         assert callback.call_event.event_type is domain_type
         assert callback.call_event.answer == answer
         assert callback.call_event.call_id == callback.call_connection_id
+        assert callback.call_event.event_id == callback.event_id
 
 
 @pytest.mark.parametrize("sub_code", [8510, 8511, 99999])

@@ -5,7 +5,9 @@ from __future__ import annotations
 import os
 from collections.abc import Iterator
 from contextlib import contextmanager
+from datetime import datetime
 from enum import StrEnum
+from hashlib import sha256
 from threading import Lock
 from uuid import UUID, uuid4
 
@@ -27,6 +29,9 @@ INSTRUMENTATION_NAME = "ask_my_human"
 
 class SpanName(StrEnum):
     REQUEST = "askhuman.request"
+    JOIN_PENDING = "askhuman.request.join_pending"
+    CALL_CREATED = "askhuman.acs.call_created"
+    CALLBACK_ACCEPTED = "askhuman.acs.callback_accepted"
     POSTGRES = "askhuman.postgres"
     ACS_CREATE_CALL = "askhuman.acs.create_call"
     ACS_CALLBACK = "askhuman.acs.callback"
@@ -49,6 +54,9 @@ class DependencyOperation(StrEnum):
 
 _OPERATION_SPANS = {
     TelemetryOperation.ASK: SpanName.REQUEST,
+    TelemetryOperation.JOIN_PENDING: SpanName.JOIN_PENDING,
+    TelemetryOperation.CALL_CREATED: SpanName.CALL_CREATED,
+    TelemetryOperation.CALLBACK_ACCEPTED: SpanName.CALLBACK_ACCEPTED,
     TelemetryOperation.CALLBACK: SpanName.ACS_CALLBACK,
     TelemetryOperation.REPOSITORY: SpanName.POSTGRES,
     TelemetryOperation.CREATE_CALL: SpanName.ACS_CREATE_CALL,
@@ -150,6 +158,10 @@ class AzureMonitorTelemetry:
         acs_code: int | None = None,
         elapsed_ms: int | None = None,
         replay: bool | None = None,
+        call_id: str | None = None,
+        event_id: str | None = None,
+        delivery_id: UUID | None = None,
+        received_at: datetime | None = None,
     ) -> None:
         with self.span(
             _OPERATION_SPANS[operation],
@@ -160,6 +172,10 @@ class AzureMonitorTelemetry:
             acs_code=acs_code,
             elapsed_ms=elapsed_ms,
             replay=replay,
+            call_id=call_id,
+            event_id=event_id,
+            delivery_id=delivery_id,
+            received_at=received_at,
         ):
             pass
 
@@ -194,6 +210,10 @@ class AzureMonitorTelemetry:
         acs_code: int | None = None,
         acs_subcode: int | None = None,
         replay: bool | None = None,
+        call_id: str | None = None,
+        event_id: str | None = None,
+        delivery_id: UUID | None = None,
+        received_at: datetime | None = None,
     ) -> Iterator[Span]:
         attributes: dict[str, str | int | bool] = {"request_id": str(request_id)}
         optional_attributes: tuple[tuple[str, object | None], ...] = (
@@ -205,6 +225,10 @@ class AzureMonitorTelemetry:
             ("acs_code", acs_code),
             ("acs_subcode", acs_subcode),
             ("replay", replay),
+            ("call_id_sha256", sha256(call_id.encode()).hexdigest() if call_id else None),
+            ("event_id_sha256", sha256(event_id.encode()).hexdigest() if event_id else None),
+            ("delivery_id", str(delivery_id) if delivery_id is not None else None),
+            ("received_at", received_at.isoformat() if received_at is not None else None),
         )
         attributes.update(
             (attribute_name, value)
@@ -240,7 +264,9 @@ class AzureMonitorTelemetry:
             TelemetryOperation.RECOGNIZE: DependencyOperation.RECOGNIZE,
             TelemetryOperation.CALLBACK: DependencyOperation.CALLBACK,
             TelemetryOperation.ASK: DependencyOperation.CALLBACK,
-        }[operation]
+        }.get(operation)
+        if mapped_operation is None:
+            return
         self.record_dependency_failure(
             dependency=(
                 Dependency.POSTGRES
@@ -293,8 +319,13 @@ def configure_observability(*, connection_string: str | None = None) -> AzureMon
         "APPLICATIONINSIGHTS_CONNECTION_STRING"
     )
     if resolved_connection_string:
+        resource_attributes = {"service.name": "ask-my-human"}
+        revision = os.environ.get("CONTAINER_APP_REVISION")
+        if revision:
+            resource_attributes["service.version"] = revision
         configure_azure_monitor(
             connection_string=resolved_connection_string,
+            sampling_ratio=1.0,
             instrumentation_options={
                 name: {"enabled": False}
                 for name in (
@@ -314,6 +345,6 @@ def configure_observability(*, connection_string: str | None = None) -> AzureMon
             disable_logging=True,
             enable_live_metrics=False,
             enable_performance_counters=False,
-            resource=Resource.create({"service.name": "ask-my-human"}),
+            resource=Resource.create(resource_attributes),
         )
     return AzureMonitorTelemetry()

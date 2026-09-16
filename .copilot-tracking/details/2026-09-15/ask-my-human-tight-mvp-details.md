@@ -1148,12 +1148,14 @@ and telemetry evidence that no deployed component currently produces. This phase
 creates those evidence sources. It is a prerequisite for Step 5.3, not a
 replacement for it, and it authorizes no paid call.
 
-Root cause: the harness accepts provider evidence from `acs-provider` or
-`acs-http-dependency`. Neither source exists today. No Bicep module configures a
-diagnostic setting on any resource, so Azure Communication Services call logs
-never reach Log Analytics. Separately, `configure_telemetry` disables every
-auto-instrumentation option, including `azure_sdk` and `httpx`, so no
-`AppDependencies` rows are recorded for outbound Communication Services calls.
+The original contract mixed provider call evidence with application-only
+observations and assumed a workspace completeness watermark. On 2026-09-16 the
+user approved revising this contract and continuing offline. Keep independent
+provider rows, add explicit content-free application observations, and require
+a hash-bound operator review of a bounded snapshot. This is not a global
+ingestion-completeness claim. Automatic HTTP/SDK instrumentation remains disabled.
+The diagnostics code and offline harvester do not establish live ingestion or
+authorize deployment or paid calls.
 
 ### Step 5A.1: Route Communication Services Call Logs To Log Analytics
 
@@ -1165,15 +1167,17 @@ test, and carry call metadata rather than prompt or answer content.
 
 Files:
 
-* infra/modules/communications.bicep - Add a `Microsoft.Insights/diagnosticSettings`
-  resource scoped to the Communication Services resource.
-* infra/modules/observability.bicep - Export the Log Analytics workspace resource id.
+* infra/modules/communications-acs-diagnostics.bicep - Configure the existing ACS
+  resource's diagnostic setting in its own subscription/resource-group scope.
+* infra/modules/communications.bicep - Compose the scoped diagnostics module.
+* infra/modules/observability.bicep - Reuse its existing workspace resource ID output.
 * infra/main.bicep - Pass the workspace resource id into the communications module.
 * infra/environments/dev.bicepparam - No change expected; confirm no new parameter leaks a secret.
 
 Log categories to enable:
 
-* `CallAutomationOperationalLogs` for create-call attempts and correlation identifiers.
+* `CallAutomationOperational` for incoming CreateCall API results and correlation identifiers;
+  verify this category and its tables on the target resource before deployment.
 * `CallSummary` for terminal call disposition and carrier-reported cause codes.
 * `CallDiagnostics` when the resource exposes it, for silence and ring-out signals.
 
@@ -1188,39 +1192,58 @@ Dependencies:
 
 * Step 5.2 verified deployment
 
-### Step 5A.2: Build The Provider Evidence Harvester
+### Step 5A.2: Build The Reviewed Evidence Harvester
 
-Add an operator script that queries the Log Analytics workspace over a bounded
-time window and writes a `_ProviderEvidence` document. The script reads only; it
-never reads the application database and never invents identities.
+Query the workspace over an explicit bounded time window and write one
+`EvidenceSnapshot` with separate provider and application sections. The script
+reads only, never reads the application database, never invents provider IDs,
+and never writes an operator review. The reviewed bounded-window contract
+supersedes the former `_ProviderEvidence` / `_TelemetryEvidence` watermark design.
 
 Files:
 
 * scripts/harvest_live_evidence.py - New operator script.
 * tests/unit/test_harvest_live_evidence.py - Offline coverage over recorded query payloads.
+* src/ask_my_human/live_evidence.py - Shared strict snapshot/review contract.
+* src/ask_my_human/application/service.py - Observe returned call IDs and pending joins.
+* src/ask_my_human/api/callbacks.py - Observe successful authenticated callback batches.
+* src/ask_my_human/observability.py - Hash provider IDs and bind exports to the revision.
+* tests/e2e/test_live_call.py - Consume the reviewed snapshot without weakening terminal checks.
 
 Required behavior:
 
-* Accept a window start, a revision, and a record string; emit `source` as `acs-provider`.
-* Set `complete_through` from the workspace ingestion watermark, never from the clock,
-  so the harness can reject partial windows.
-* Map each create-call operation to an `_Attempt` with `request_id`, `attempt_id`, and `call_id`.
-* Map accepted callback deliveries to `_Delivery` entries, including deliveries received
-  after terminal completion, which the duplicate-callback scenario requires.
-* Emit `_PendingJoin` entries with `observed_at` for the concurrent replay scenario.
-* Fail closed with a nonzero exit when the window is incompletely ingested.
+* Require workspace UUID, explicit ACS and Application Insights resource IDs, revision,
+  bounded start/end timestamps, and a content-free record reference.
+* Retain every `CreateCall` result row from `ACSCallAutomationIncomingOperations`.
+  Hash real `CallConnectionId` and `CorrelationId`; do not equate the media `OperationId`
+  with an attempt or application request. Repeated provider rows remain repeated.
+* Keep provider rows free of application request IDs. Correlate them using separately
+  attributed application observations of the actual returned call ID, never database rows.
+* Preserve accepted callback receipts (including post-terminal deliveries) and pending
+  joins in `application-observations`. A generated receipt UUID identifies an application
+  HTTP delivery, not a provider event. Hash opaque provider call/event IDs before export.
+* Require successful full query responses, the exact projected schema, unsampled
+  application rows, and reconciliation of all call IDs. Reject oversized windows rather
+  than silently truncate or discard other callers' provider rows.
+* Record `window_start`, `window_end`, `queried_at`, and query hashes. None is a global
+  ingestion watermark. A separate authorized review binds the exact export bytes and
+  explicitly accepts residual late-arrival risk after checking diagnostics and ingestion.
+* Keep the exactly-one-provider-result, exact terminal result, pending-join, and accepted
+  duplicate-delivery gates. Their conclusions are scoped to the reviewed window.
 
 Success criteria:
 
 * The emitted document validates against the harness models without edits.
-* Unit tests cover the incomplete-window rejection and the correlation mapping.
+* Unit tests cover partial query rejection, unbound/invalid reviews, missing or conflicting
+  correlations, duplicate records/receipts, sampling, and output/error privacy.
 * The script never writes secrets or spoken content to its output.
+* The README provides a deliberately non-passing review template and the operator procedure.
 
 Dependencies:
 
 * Step 5A.1 provider logs flowing
 
-### Step 5A.3: Provision The Isolated Live Database And Telemetry Watermark
+### Step 5A.3: Provision The Isolated Live Database And Reviewed Export Window
 
 The approval binds `database_sha256` and `database_isolated`. Live scenarios seed
 sentinel values and exercise a destructive purge path, so they must not run against
@@ -1231,13 +1254,21 @@ Actions:
 * Create a dedicated database on the existing flexible server for live execution.
 * Point the verified revision at it for the duration of the matrix, then restore it.
 * Record the SHA-256 of the full connection string for the approval document.
-* Extend `scripts/harvest_live_evidence.py` with a telemetry mode that emits a
-  `_TelemetryEvidence` document from the workspace export watermark.
+* Produce and review a scoped evidence snapshot with the harvester. Bind its path,
+  review path, reviewer, both resource IDs, and workspace in `LIVE_APPROVAL_JSON`.
+* Verify deployment sampling overrides and ingestion sampling are disabled. The
+  application requests a 100% sampler and records `CONTAINER_APP_REVISION` as
+  `service.version`, exported as `AppVersion`.
+* Review preflight evidence before opt-in and refresh the export/review through the
+  end of each scenario. No real provider table means blocked preflight; any bootstrap
+  call requires its own explicit paid-call approval, not fabricated zero-row evidence.
 
 Success criteria:
 
 * The live database is empty before the matrix and is not the default application database.
-* The telemetry document reports a `complete_through` that is not in the future.
+* The exact-byte review binds the approved reviewer, resources, revision, and an elapsed
+  observation window. Its timestamp is after query completion and not in the future.
+* Release evidence records the bounded-snapshot late-arrival limitation explicitly.
 * Restoring the original configuration produces a healthy revision.
 
 Dependencies:

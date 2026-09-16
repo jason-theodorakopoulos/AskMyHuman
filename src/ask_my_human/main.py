@@ -20,7 +20,7 @@ from ask_my_human.api.health import PoolState, create_readiness_router, liveness
 from ask_my_human.api.oauth_metadata import create_oauth_metadata_router
 from ask_my_human.api.requests import create_requests_router
 from ask_my_human.application.maintenance import RequestMaintenance
-from ask_my_human.application.ports import AskHumanUseCase
+from ask_my_human.application.ports import AskHumanUseCase, Telemetry
 from ask_my_human.application.service import AskHumanService
 from ask_my_human.config import Settings
 from ask_my_human.domain.models import CallEvent, Principal
@@ -89,6 +89,7 @@ class ApplicationComponents:
     validate_callback_token: Callable[[str], Awaitable[None]]
     # Client cleanups in shutdown order; the pool closes before them.
     closers: tuple[Callable[[], Awaitable[None]], ...] = field(default_factory=tuple)
+    telemetry: Telemetry | None = None
 
 
 def parse_callback_events(payload: object) -> Sequence[CallEvent]:
@@ -156,6 +157,7 @@ def build_components(settings: Settings) -> ApplicationComponents:
         maintenance=maintenance,
         validate_callback_token=validate_callback_token,
         closers=(acs_client.close, credential.close, http_client.aclose),
+        telemetry=telemetry,
     )
 
 
@@ -219,6 +221,7 @@ def create_app(components: ApplicationComponents | None = None) -> FastAPI:
             use_case=resolved.use_case,
             validate_token=resolved.validate_callback_token,
             parse_events=parse_callback_events,
+            telemetry=resolved.telemetry,
         )
     )
     # Mount last so the catch-all MCP transport never shadows an HTTP route.

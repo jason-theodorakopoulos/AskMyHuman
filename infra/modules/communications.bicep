@@ -15,6 +15,9 @@ param containerIdentityPrincipalId string
 @description('Resource ID of the Container App user-assigned managed identity.')
 param containerIdentityResourceId string
 
+@description('Resource ID of the Log Analytics workspace for provider call evidence.')
+param logAnalyticsWorkspaceId string
+
 var acsResourceIdSegments = split(existingAcsResourceId, '/')
 var acsSubscriptionId = acsResourceIdSegments[2]
 var acsResourceGroupName = acsResourceIdSegments[4]
@@ -47,6 +50,15 @@ module containerAcsDataOwner 'communications-acs-role-assignment.bicep' = {
     acsResourceName: acsResourceName
     containerIdentityPrincipalId: containerIdentityPrincipalId
     containerIdentityResourceId: containerIdentityResourceId
+  }
+}
+
+module acsDiagnostics 'communications-acs-diagnostics.bicep' = {
+  name: 'communications-acs-diagnostics'
+  scope: resourceGroup(acsSubscriptionId, acsResourceGroupName)
+  params: {
+    acsResourceName: acsResourceName
+    logAnalyticsWorkspaceId: logAnalyticsWorkspaceId
   }
 }
 

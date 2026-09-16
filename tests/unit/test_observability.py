@@ -9,6 +9,7 @@ from fastapi import FastAPI, Request
 from httpx import ASGITransport, AsyncClient
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import InMemoryMetricReader
+from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import ReadableSpan, TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor, SpanExporter, SpanExportResult
 from opentelemetry.trace import SpanKind
@@ -111,6 +112,60 @@ def test_record_emits_approved_request_span_and_low_cardinality_metrics(
     assert str(request_id) not in str(metric_reader.get_metrics_data())
 
 
+def test_pending_join_is_an_observation_not_a_completed_request(
+    captured_telemetry: tuple[AzureMonitorTelemetry, CapturingSpanExporter, InMemoryMetricReader],
+) -> None:
+    telemetry, exporter, metric_reader = captured_telemetry
+    request_id = uuid4()
+    telemetry.record(
+        operation=TelemetryOperation.JOIN_PENDING,
+        request_id=request_id,
+        kind=RequestKind.APPROVAL,
+        replay=True,
+    )
+    assert len(exporter.spans) == 1
+    assert exporter.spans[0].name == SpanName.JOIN_PENDING.value
+    assert exporter.spans[0].attributes == {
+        "request_id": str(request_id),
+        "kind": "approval",
+        "replay": True,
+    }
+    capture = serialized_capture(exporter, metric_reader)
+    assert "askhuman_requests_total" not in capture
+    assert all(sentinel not in capture for sentinel in SENTINELS)
+
+
+def test_provider_identifiers_are_hashed_before_export(
+    captured_telemetry: tuple[AzureMonitorTelemetry, CapturingSpanExporter, InMemoryMetricReader],
+) -> None:
+    from datetime import UTC, datetime
+    from hashlib import sha256
+
+    telemetry, exporter, metric_reader = captured_telemetry
+    request_id = uuid4()
+    delivery_id = uuid4()
+    received_at = datetime.now(UTC)
+    telemetry.record(
+        operation=TelemetryOperation.CALLBACK_ACCEPTED,
+        request_id=request_id,
+        call_id="prompt-SENSITIVE",
+        event_id="answer-SENSITIVE",
+        delivery_id=delivery_id,
+        received_at=received_at,
+    )
+    assert exporter.spans[0].name == SpanName.CALLBACK_ACCEPTED.value
+    assert exporter.spans[0].attributes == {
+        "request_id": str(request_id),
+        "call_id_sha256": sha256(b"prompt-SENSITIVE").hexdigest(),
+        "event_id_sha256": sha256(b"answer-SENSITIVE").hexdigest(),
+        "delivery_id": str(delivery_id),
+        "received_at": received_at.isoformat(),
+    }
+    capture = serialized_capture(exporter, metric_reader)
+    assert "askhuman_requests_total" not in capture
+    assert all(sentinel not in capture for sentinel in SENTINELS)
+
+
 def test_all_approved_spans_share_a_random_request_correlation_id(
     captured_telemetry: tuple[AzureMonitorTelemetry, CapturingSpanExporter, InMemoryMetricReader],
 ) -> None:
@@ -199,6 +254,7 @@ def test_setup_excludes_content_capturing_automatic_instrumentation(
         configured_options.update(options)
 
     monkeypatch.setattr(observability, "configure_azure_monitor", capture_configuration)
+    monkeypatch.setenv("CONTAINER_APP_REVISION", "reviewed-app--revision")
 
     telemetry = configure_observability(connection_string="InstrumentationKey=not-a-secret")
 
@@ -210,6 +266,11 @@ def test_setup_excludes_content_capturing_automatic_instrumentation(
     assert configured_options["disable_logging"] is True
     assert configured_options["disable_azure_core_tracing"] is True
     assert configured_options["enable_live_metrics"] is False
+    assert configured_options["sampling_ratio"] == 1.0
+    resource = configured_options["resource"]
+    assert isinstance(resource, Resource)
+    assert resource.attributes["service.name"] == "ask-my-human"
+    assert resource.attributes["service.version"] == "reviewed-app--revision"
 
 
 @pytest.mark.asyncio
@@ -280,3 +341,16 @@ def test_port_operations_map_to_real_spans_and_dependency_metrics(
         telemetry.dependency_failed(operation, error_code=ErrorCode.DEPENDENCY_FAILURE)
     assert {span.name for span in exporter.spans} == {name.value for name in SpanName}
     assert "askhuman_dependency_failures_total" in str(reader.get_metrics_data())
+
+
+def test_observations_do_not_create_dependency_failure_metrics(
+    captured_telemetry: tuple[AzureMonitorTelemetry, CapturingSpanExporter, InMemoryMetricReader],
+) -> None:
+    telemetry, _, reader = captured_telemetry
+    for operation in (
+        TelemetryOperation.JOIN_PENDING,
+        TelemetryOperation.CALL_CREATED,
+        TelemetryOperation.CALLBACK_ACCEPTED,
+    ):
+        telemetry.dependency_failed(operation, error_code=ErrorCode.DEPENDENCY_FAILURE)
+    assert "askhuman_dependency_failures_total" not in str(reader.get_metrics_data())

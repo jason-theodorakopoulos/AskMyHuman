@@ -160,5 +160,9 @@ def test_telemetry_records_only_typed_contract_fields() -> None:
             "acs_code": None,
             "elapsed_ms": 10,
             "replay": False,
+            "call_id": None,
+            "event_id": None,
+            "delivery_id": None,
+            "received_at": None,
         }
     ]

@@ -341,3 +341,152 @@ resource group `rg-askmyhuman`, region `swedencentral`. Step 5.3 remains open.
     assignments as Unsupported and the strict review filter rejected the change set.
 * Relaxed the deploy script verification gate to accept `RunningAtMaxScale`.
   * Reason: With a single fixed replica, Container Apps never reports plain `Running`.
+
+## Phase 5A Local Start: 2026-09-16
+
+* Fetched origin and fast-forwarded local main by 12 commits to `ff4dc43`.
+  Created `feature/bojan-phase5-live-validation` from that updated main.
+* Started Step 5A.1 with `infra/modules/communications-acs-diagnostics.bicep`.
+  It targets the existing ACS resource and sends `CallAutomationOperational`
+  and `CallSummary` to resource-specific Log Analytics tables. It does not
+  enable all log categories, metrics, or application auto-instrumentation.
+* Wired the existing observability workspace output through the communications
+  module. The diagnostics child deployment uses the ACS subscription and
+  resource group, matching the existing role-assignment module's scope.
+  No new root parameter, public output, or development parameter binding was added.
+* Local validation passed: `az bicep build --file infra/main.bicep --stdout --only-show-errors`;
+  structured compiled-template checks verified workspace binding, cross-resource-group
+  scope, one diagnostic setting, the two enabled categories, and the dedicated
+  destination. Editor diagnostics reported no errors in the three Bicep files.
+* Deployment-script review found no resource-type allowlist that needs changing.
+  Its Bash regression suite was not run: the local Windows environment has no
+  pytest, and the available WSL Ubuntu environment has neither pytest nor jq.
+* Step 5A.1 remains incomplete. Before applying, verify the target resource's
+  category identifiers and content fields; the configured category is
+  `CallAutomationOperational`, not the planning label `CallAutomationOperationalLogs`.
+  Enable optional `CallDiagnostics` only after confirming support. Reviewed what-if,
+  deployment approval, and actual provider-log ingestion evidence are still required.
+* No Azure resource changes, paid calls, commits, or branch publication were performed.
+  Existing local environment files and ignored meeting notes were preserved.
+
+## Phase 5A Evidence Feasibility Check: 2026-09-16
+
+* The current Azure CLI account cache has no subscription named
+  `ME-MngEnvMCAP721432-dkalamaras-1`, the deployment target recorded above.
+  No target deployment identifiers were available from the allowlisted local
+  environment-file fields. Target-specific category discovery and reviewed what-if
+  cannot proceed in this session until authorized access is available. Do not
+  substitute the older `acsrgj1rg` discovery target.
+* Step 5A.2 has an evidence-source blocker, not just a missing script.
+  The [ACS incoming-operations schema](https://learn.microsoft.com/en-us/azure/azure-monitor/reference/tables/acscallautomationincomingoperations)
+  documents provider call identifiers, but not the application's request ID or
+  `operation_context`. The gateway sends the request ID as `operation_context`;
+  its appearance in provider logs has not been demonstrated. Do not equate a
+  provider `OperationId` or `CorrelationId` with the application request ID.
+* The current content-free telemetry allowlist does not include `call_id`,
+  `event_id`, or `delivery_id`. Provider call summaries do not establish which
+  callback deliveries the application accepted or when a replay joined an
+  existing pending request. Those facts are required by `_Delivery` and
+  `_PendingJoin` in [the live harness](../../../tests/e2e/test_live_call.py).
+* A maximum ingestion timestamp is not the required `complete_through` proof.
+  Microsoft documents [ingestion_time()](https://learn.microsoft.com/en-us/kusto/query/ingestion-time-function?view=azure-monitor)
+  as approximate and unsuitable for ordering concurrent ingestion operations.
+  Neither the query time, the latest ingested row, nor a fixed delay establishes
+  that all provider or telemetry records through the test interval have arrived.
+* Before implementing a harness-valid harvester, the release owner must approve
+  an evidence contract covering provider-to-request correlation, content-free
+  accepted-delivery and pending-join observations, and a defensible export
+  completion mechanism. Keep source provenance explicit. Preserve independent
+  provider attempt evidence and keep partial exports fail-closed; do not infer
+  missing identities from application database rows or silently accept partial data.
+* Steps 5A.1 through 5A.4 and the paid live matrix remain incomplete. No Azure
+  mutation, credential retrieval, paid call, or change to the harness gates was made.
+
+## Phase 5A Offline Evidence Implementation: 2026-09-16
+
+### Approval And Scope
+
+* The user approved revising the evidence contract and continuing offline after
+  the feasibility findings above. They asked to be notified before push/PR work;
+  the branch remains unpublished, with no commit or PR created.
+* The revised contract separates independent provider CreateCall API-result rows
+  from application call correlations, accepted callback receipts, and pending
+  joins. It does not infer provider identities from database rows or treat media
+  `OperationId` as an application request ID.
+* A hash-bound operator review of a bounded snapshot replaces the unsupported
+  `complete_through` design. Diagnostic/sampling/ingestion checks and explicit
+  acceptance of residual late-arrival risk are required; none proves global
+  ingestion completeness. This approved revision resolves the offline design
+  blocker, not target Azure access, actual ingestion, or release acceptance.
+
+### Implemented
+
+* Added `src/ask_my_human/live_evidence.py` with strict resource/revision/workspace
+  scope, provider/application reconciliation, time-window validation, and a
+  separate reviewer-bound SHA-256 review of the exact export bytes.
+* Added the read-only `scripts/harvest_live_evidence.py`. It requires full query
+  responses and exact projected columns, rejects sampled/oversized/unreconciled
+  data, retains repeated provider rows, and never creates a review, reads the
+  application database, places calls, or overwrites an existing export.
+* Added explicit call-created, pending-join, and accepted-callback observations.
+  Opaque provider call/event IDs are hashed before application export. Receipt
+  IDs identify individual HTTP deliveries after the authenticated batch finishes;
+  they do not prove ACS received the response or a callback mutated stored state.
+* Bound application telemetry to `CONTAINER_APP_REVISION` and requested full
+  sampling. Automatic HTTP/SDK/body instrumentation remains disabled. Operators
+  must still verify sampler overrides and ingestion settings on the deployment.
+* Migrated the live harness to reviewed snapshots while preserving provider-row
+  counts, exact terminal results, duplicate receipts, pending joins, privacy
+  sentinels, and all deployment/database/scenario/paid-call gates. Export refreshes
+  tolerate transient file-pair mismatches but never accept a bad hash or a window
+  missing the scenario start.
+* Updated the README and Phase 5A details with provenance, fail-closed limits,
+  immutable archives, active-pair refresh, a deliberately non-passing review
+  template, and the separate external gates. No database schema, public JSON
+  contract, deployment framework, retry path, or service topology changed.
+
+### Local Verification
+
+* `uv lock --check --offline` passed; project metadata and the unchanged lock agree.
+  This is not evidence of a successful frozen environment installation.
+* Pinned Ruff `0.16.7` passed repository-wide format and lint checks. Because the
+  mirror lacked this version and the Python wheel host failed TLS, the official
+  GitHub release archive was downloaded and its published SHA-256 verified before
+  execution. Dependency manifests and lockfile were not altered.
+* `python -m mypy src scripts/harvest_live_evidence.py` passed for all 31 production
+  files. Explicit checking of all 18 changed Python files with
+  `--follow-imports=silent` also passed. Neither is the full `mypy src tests` gate.
+* The Windows-available unit and contract run passed 396 tests, with 23 Unix
+  verifier cases deselected and the Bash deployment-script module excluded.
+  Branch-aware coverage was 96.34% across the evidence contract, harvester,
+  callback observations, and telemetry module. This is scoped coverage, not the
+  required full-suite coverage result.
+* Public schema export drift checking passed with `PYTHONPATH=src`. With
+  `RUN_LIVE_AZURE_TESTS=0`, all 20 live scenarios skipped. Focused refresh/privacy
+  regressions passed, including temporary invalid pairs and missing window starts.
+* All 9 Bicep templates and the development parameter file compiled using only
+  synthetic CI placeholders, with stdout output and no generated-file changes.
+  This compilation does not establish target category support or ingestion.
+
+### Remaining Gates
+
+* Local runner/package access: frozen sync still fails at the public wheel host;
+  the configured mirror lacks pinned releases including Alembic `1.20.0` and
+  PyJWT `2.14.0`. The Windows HTTPS fallback also failed, so no downloaded path
+  from that failed command was treated as a package. The selected Python 3.12
+  environment is only partially lock-aligned. Full `mypy src tests` reports
+  missing Alembic/SQLAlchemy/testcontainers imports and JSON Schema stubs, not
+  changed-source typing failures. Owner: validation runner operator. Next action:
+  run the unchanged frozen environment gate on a runner with package access.
+* Linux/Docker validation: Bash/jq verifier fixtures, full non-live coverage,
+  PostgreSQL integration, Compose/image build, and container smoke remain unrun
+  here. Owner: validation runner operator. Next action: execute the existing CI
+  gates on a Linux/Docker-capable runner after publication is authorized.
+* Azure/release validation: target subscription access is still unavailable.
+  ACS category/schema/content review, reviewed what-if and deployment, live
+  ingestion/sampling checks, isolated database, carrier arrangements, and all
+  paid scenarios remain separately blocked. Owner: target deployment/release
+  operator. No older discovery target may be substituted.
+* Do not mark Phase 5A or Step 5.3 complete, claim a merge-ready gate, or treat
+  documentation and offline tests as Azure or live acceptance. No Azure resource
+  mutation, paid call, commit, push, or PR was performed in this work.
