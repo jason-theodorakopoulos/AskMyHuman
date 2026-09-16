@@ -6,17 +6,19 @@ from ask_my_human.config import Settings
 
 
 def test_oauth_protected_resource_metadata_is_exact_and_sanitized() -> None:
-    configured = Settings(
-        database_url="postgresql://user:database-secret@localhost:5432/askmyhuman",
-        acs_endpoint="https://secret.communication.azure.com",
-        acs_source_phone_number="+15555550100",
-        my_mobile_number="+15555550101",
-        azure_ai_endpoint="https://secret.cognitiveservices.azure.com",
-        acs_callback_audience="https://askmyhuman.example.com",
-        entra_tenant_id="test-tenant-id",
-        entra_client_id="ask-my-human-client-id",
-        authorized_agent_app_ids=("authorized-agent-id",),
-        mcp_allowed_hosts=("askmyhuman.example.com",),
+    configured = Settings.model_validate(
+        {
+            "database_url": "******localhost:5432/askmyhuman",
+            "acs_endpoint": "https://secret.communication.azure.com",
+            "acs_source_phone_number": "+15555550100",
+            "my_mobile_number": "+15555550101",
+            "azure_ai_endpoint": "https://secret.cognitiveservices.azure.com",
+            "acs_callback_audience": "https://askmyhuman.example.com",
+            "entra_tenant_id": "test-tenant-id",
+            "entra_client_id": "ask-my-human-client-id",
+            "authorized_agent_app_ids": ("authorized-agent-id",),
+            "mcp_allowed_hosts": ("askmyhuman.example.com",),
+        }
     )
     app = FastAPI()
     app.include_router(create_oauth_metadata_router(configured))

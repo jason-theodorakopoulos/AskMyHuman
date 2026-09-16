@@ -1,5 +1,6 @@
 import asyncio
 import json
+from collections.abc import Iterator
 from pathlib import Path
 from typing import cast
 from uuid import UUID, uuid4
@@ -10,7 +11,7 @@ from mcp.server.auth.middleware.bearer_auth import AuthenticatedUser
 from mcp.server.auth.provider import AccessToken
 from mcp.server.context import ServerRequestContext
 from mcp.shared.exceptions import MCPError
-from mcp.types import INVALID_PARAMS, CallToolRequestParams
+from mcp.types import INVALID_PARAMS, CallToolRequestParams, TextContent
 
 from ask_my_human.application.ports import CancellationSignal
 from ask_my_human.contracts import AskHumanRequest, AskHumanResult, Outcome, RequestStatus
@@ -64,7 +65,7 @@ class RecordingUseCase:
 
 
 @pytest.fixture
-def authenticated_agent() -> None:
+def authenticated_agent() -> Iterator[None]:
     token = auth_context_var.set(
         AuthenticatedUser(
             AccessToken(
@@ -92,7 +93,7 @@ def test_tool_uses_checked_in_request_and_result_schemas() -> None:
 def test_app_factory_exposes_only_streamable_http_mcp_route() -> None:
     app = create_streamable_http_app(RecordingUseCase())
 
-    assert [route.path for route in app.routes] == ["/mcp"]
+    assert [route.path for route in app.routes] == ["/mcp"]  # type: ignore[attr-defined]
 
 
 @pytest.mark.asyncio
@@ -189,7 +190,7 @@ async def test_unexpected_failure_is_sanitized(authenticated_agent: None) -> Non
     assert response.is_error is True
     assert response.structured_content["code"] == "internal"
     assert response.structured_content["message"] == "The human request could not be completed."
-    assert "password" not in response.content[0].text
+    assert "password" not in cast(TextContent, response.content[0]).text
 
 
 @pytest.mark.asyncio

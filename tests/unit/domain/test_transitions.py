@@ -3,7 +3,7 @@ from uuid import uuid4
 
 import pytest
 
-from ask_my_human.contracts import AskHumanRequest, Outcome, RequestStatus
+from ask_my_human.contracts import AskHumanRequest, Outcome, RequestKind, RequestStatus
 from ask_my_human.domain.models import (
     CallEvent,
     CallEventType,
@@ -63,7 +63,7 @@ def test_terminal_request_cannot_transition_again() -> None:
     request = HumanRequest(
         request_id=request_id,
         principal=Principal(subject_id="subject", application_id="app"),
-        request=AskHumanRequest(kind="approval", prompt="Continue?", idempotencyKey=uuid4()),
+        request=AskHumanRequest(kind=RequestKind.APPROVAL, prompt="Continue?", idempotencyKey=uuid4()),
         request_hash="hash",
         state=RequestState.RESPONDED,
         created_at=datetime.now(UTC),
@@ -79,7 +79,7 @@ def test_request_ignores_event_for_another_request() -> None:
     request = HumanRequest(
         request_id=uuid4(),
         principal=Principal(subject_id="subject", application_id="app"),
-        request=AskHumanRequest(kind="approval", prompt="Continue?", idempotencyKey=uuid4()),
+        request=AskHumanRequest(kind=RequestKind.APPROVAL, prompt="Continue?", idempotencyKey=uuid4()),
         request_hash="hash",
         state=RequestState.PENDING,
         created_at=datetime.now(UTC),
