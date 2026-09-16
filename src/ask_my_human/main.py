@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, Sequence
-from contextlib import AsyncExitStack, asynccontextmanager, suppress
+from contextlib import AsyncExitStack, asynccontextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
@@ -45,6 +46,8 @@ from ask_my_human.security.acs_callback import AcsCallbackTokenValidator
 from ask_my_human.security.agent import parse_container_apps_principal
 from ask_my_human.telephony.acs_client import AcsCallAutomationGateway
 from ask_my_human.telephony.events import parse_callback_event
+
+logger = logging.getLogger(__name__)
 
 CLIENT_PRINCIPAL_HEADER = "x-ms-client-principal"
 CONNECTION_STRING_VARIABLE = "APPLICATIONINSIGHTS_CONNECTION_STRING"
@@ -273,9 +276,10 @@ async def _stop_tasks(
     cancellation.cancel()
     for task in tasks:
         task.cancel()
-    for task in tasks:
-        with suppress(asyncio.CancelledError, Exception):
-            await task
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    for result in results:
+        if isinstance(result, BaseException) and not isinstance(result, asyncio.CancelledError):
+            logger.error("A maintenance loop failed during shutdown.", exc_info=result)
 
 
 def create_app(

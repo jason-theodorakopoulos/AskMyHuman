@@ -57,10 +57,19 @@ git_sha() {
 }
 
 resolve_image() {
-  # The full commit SHA keeps the deployed image immutable and traceable.
+  # The full commit SHA keeps the deployed image immutable and traceable. An explicit
+  # CONTAINER_IMAGE wins so that verify can target a revision built from another commit.
+  if [[ -n "${CONTAINER_IMAGE:-}" ]]; then
+    CONTAINER_IMAGE_EXPLICIT=1
+    EXPECTED_IMAGE="$CONTAINER_IMAGE"
+    export CONTAINER_IMAGE
+    return
+  fi
+  CONTAINER_IMAGE_EXPLICIT=0
   local sha
   sha="$(git_sha)"
   export CONTAINER_IMAGE="${CONTAINER_REGISTRY_SERVER}/${IMAGE_REPOSITORY}:${sha}"
+  EXPECTED_IMAGE="$CONTAINER_IMAGE"
 }
 
 deployment_name() {
@@ -97,11 +106,31 @@ deploy_bicep() {
 }
 
 container_app_name() {
+  # After a deployment the name comes from this run's outputs. Standalone verification
+  # must not depend on the checked-out commit, so it resolves the app directly.
+  if [[ -n "${CONTAINER_APP_NAME:-}" ]]; then
+    printf '%s' "$CONTAINER_APP_NAME"
+    return
+  fi
   az deployment group show \
     --name "$(deployment_name)" \
     --resource-group "$AZURE_RESOURCE_GROUP" \
     --query properties.outputs.containerAppName.value \
     --output tsv
+}
+
+discover_container_app_name() {
+  if [[ -n "${CONTAINER_APP_NAME:-}" ]]; then
+    printf '%s' "$CONTAINER_APP_NAME"
+    return
+  fi
+  local names count
+  names="$(az containerapp list --resource-group "$AZURE_RESOURCE_GROUP" \
+    --query '[].name' --output tsv)"
+  [[ -n "$names" ]] || fail "no container app exists in ${AZURE_RESOURCE_GROUP}"
+  count="$(printf '%s\n' "$names" | wc -l)"
+  ((count == 1)) || fail "set CONTAINER_APP_NAME; ${AZURE_RESOURCE_GROUP} holds ${count} container apps"
+  printf '%s' "$names"
 }
 
 verify_revision() {
@@ -118,8 +147,10 @@ verify_revision() {
   running="$(az containerapp revision show --name "$app" --resource-group "$AZURE_RESOURCE_GROUP" \
     --revision "$revision" --query 'properties.runningState' --output tsv)"
 
-  log "Ready revision ${revision} (active=${active}, runningState=${running})"
-  [[ "$image" == "$CONTAINER_IMAGE" ]] || fail "revision image ${image} is not the reviewed ${CONTAINER_IMAGE}"
+  log "Ready revision ${revision} runs ${image} (active=${active}, runningState=${running})"
+  if [[ -n "${EXPECTED_IMAGE:-}" ]]; then
+    [[ "$image" == "$EXPECTED_IMAGE" ]] || fail "revision image ${image} is not the expected ${EXPECTED_IMAGE}"
+  fi
   [[ "$active" == "true" ]] || fail "revision ${revision} is not active"
   [[ "$running" == "Running" ]] || fail "revision ${revision} is not running"
 }
@@ -176,8 +207,11 @@ main() {
       log "Deployment verified. Live calls may now run against $(service_url "$app")"
       ;;
     verify)
+      # Verification reports whichever image the ready revision runs unless the caller
+      # pins an expectation by exporting CONTAINER_IMAGE.
+      ((CONTAINER_IMAGE_EXPLICIT == 1)) || EXPECTED_IMAGE=""
       local existing
-      existing="$(container_app_name)"
+      existing="$(discover_container_app_name)"
       verify_revision "$existing"
       verify_authentication_boundary "$(service_url "$existing")"
       ;;

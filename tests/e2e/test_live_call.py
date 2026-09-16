@@ -253,7 +253,7 @@ async def test_live_unanswered_call_expires_without_a_response(
 
 
 async def test_live_client_cancellation_ends_the_request_exactly_once(
-    client: httpx.AsyncClient, repository: PostgresRequestRepository
+    client: httpx.AsyncClient, repository: PostgresRequestRepository, pool: PostgresPool
 ) -> None:
     """Do not answer this call; the initiating client disconnects first."""
     key = uuid4()
@@ -265,7 +265,7 @@ async def test_live_client_cancellation_ends_the_request_exactly_once(
     with suppress(asyncio.CancelledError, httpx.HTTPError):
         await request
 
-    stored = await _await_terminal(repository, key)
+    stored = await _await_terminal(repository, pool, key)
     assert stored.result is not None
     assert stored.result.status is RequestStatus.EXPIRED
 
@@ -296,12 +296,31 @@ async def test_live_one_call_and_one_terminal_row_per_idempotency_key(
 
 
 async def _await_terminal(
-    repository: PostgresRequestRepository, request_id: UUID
+    repository: PostgresRequestRepository, pool: PostgresPool, idempotency_key: UUID
 ) -> "HumanRequest":
+    """Wait for the request stored under an idempotency key to leave the pending state.
+
+    A cancelled client never reads the response body, so the request identifier
+    is only discoverable through the stored idempotency key.
+    """
     deadline = datetime.now(tz=UTC) + timedelta(seconds=_REQUEST_TIMEOUT_SECONDS)
     while datetime.now(tz=UTC) < deadline:
-        stored = await repository.get(request_id)
-        if stored is not None and stored.state is not RequestState.PENDING:
-            return stored
+        request_id = await _request_id_for(pool, idempotency_key)
+        if request_id is not None:
+            stored = await repository.get(request_id)
+            if stored is not None and stored.state is not RequestState.PENDING:
+                return stored
         await asyncio.sleep(1)
     raise AssertionError("The request never reached a terminal state.")
+
+
+async def _request_id_for(pool: PostgresPool, idempotency_key: UUID) -> UUID | None:
+    async with pool.pool.connection() as connection:
+        cursor = await connection.execute(
+            "SELECT request_id FROM human_requests WHERE idempotency_key = %s",
+            (idempotency_key,),
+        )
+        row = await cursor.fetchone()
+    if row is None:
+        return None
+    return UUID(str(row[0]))
