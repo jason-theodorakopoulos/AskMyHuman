@@ -57,3 +57,15 @@ class Settings(BaseSettings):
         if not self.mcp_allowed_hosts:
             raise ValueError("mcp_allowed_hosts must not be empty")
         return self
+
+    @classmethod
+    def from_env(cls) -> "Settings":
+        """Build settings from the process environment and ``.env`` file.
+
+        Every field is required on the model so callers can rely on complete,
+        validated configuration, but pydantic-settings resolves each value
+        from the environment rather than from constructor arguments. This
+        factory documents that intentional zero-argument construction in one
+        place instead of a ``type: ignore[call-arg]`` at each call site.
+        """
+        return cls()  # type: ignore[call-arg]

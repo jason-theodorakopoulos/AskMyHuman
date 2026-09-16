@@ -64,7 +64,7 @@ def _parse_callback_events(payload: object) -> list[CallEvent]:
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
-    settings = Settings()  # type: ignore[call-arg]
+    settings = Settings.from_env()
     telemetry = configure_observability()
 
     credential = DefaultAzureCredential()
@@ -122,9 +122,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         except Exception as error:
             raise AskMyHumanError(ErrorCode.UNAUTHENTICATED, "Invalid callback token") from error
 
-    already_composed = any(
-        getattr(route, "path", None) == "/health/live" for route in app.router.routes
-    )
+    already_composed = getattr(app.state, "composed", False)
     if not already_composed:
         app.include_router(liveness_router)
         app.include_router(create_readiness_router(settings, pool.pool))
@@ -149,6 +147,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     if already_composed:
         app.router.routes = [route for route in app.router.routes if not isinstance(route, Mount)]
     app.mount("/", mcp_app)
+    app.state.composed = True
 
     try:
         async with mcp_server.session_manager.run():
