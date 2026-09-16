@@ -196,7 +196,16 @@ def deployment(tmp_path: Path) -> Deployment:
                         "changeType": "Delete",
                         "before": {"secret": "DUMMY_WHAT_IF_SECRET"},
                         "delta": [
-                            {"path": "properties.configuration.secrets", "before": "PRIVATE_VALUE"}
+                            {
+                                "path": "properties.configuration.secrets",
+                                "propertyChangeType": "Delete",
+                                "before": "PRIVATE_VALUE",
+                            },
+                            {
+                                "path": "properties.template.containers",
+                                "propertyChangeType": "Modify",
+                                "before": {"probes": [{"httpGet": {"path": "/health/live"}}]},
+                            },
                         ],
                     }
                 ],
@@ -252,6 +261,8 @@ def test_what_if_is_reviewable_but_does_not_disclose_values(deployment: Deployme
     assert result.returncode == 0, result.stderr
     assert '"Delete"' in result.stdout
     assert "properties.configuration.secrets" in result.stdout
+    assert "properties.template.containers" in result.stdout
+    assert "/health/live" not in result.stdout
     for secret in ("DUMMY_WHAT_IF_SECRET", "PRIVATE_VALUE", "dummy-private", "+1555555"):
         assert secret not in result.stdout + result.stderr
     assert len(deployment.calls("az")) == 1
