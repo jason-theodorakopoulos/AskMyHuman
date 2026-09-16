@@ -27,6 +27,8 @@ REQUIRED_VARIABLES=(
   ACS_CALLBACK_AUDIENCE
   MCP_ALLOWED_HOSTS
 )
+# Verification only reads an already deployed app, so it must never demand the
+# deployment secrets that the Bicep parameter file consumes.
 VERIFY_VARIABLES=(
   AZURE_RESOURCE_GROUP
 )
@@ -41,7 +43,7 @@ fail() {
 }
 
 require_environment() {
-  # Verification only reads an existing app, so it must not demand deployment secrets.
+  # Fail before touching Azure when any named variable or required CLI is missing.
   local missing=()
   local name
   for name in "$@"; do
@@ -181,7 +183,8 @@ verify_authentication_boundary() {
   [[ "$status" == "401" ]] || fail "the ACS callback accepted an invalid token (${status})"
 
   status="$(curl -s -o /dev/null -w '%{http_code}' "${base_url}/health/live")"
-  log "Authentication boundary verified; /health/live returned ${status}"
+  [[ "$status" == "200" ]] || fail "the liveness probe returned ${status}"
+  log "Authentication boundary and liveness probe verified"
 }
 
 service_url() {

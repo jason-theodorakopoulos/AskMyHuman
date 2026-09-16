@@ -184,7 +184,7 @@ Publication status:
 
 * Generated schema drift check passed.
 * Ruff formatting and lint passed for 76 Python files.
-* Non-live suite passed with 174 tests at 92.31% coverage against the 90% gate.
+* Non-live suite passed with 174 tests at 92.21% coverage against the 90% gate.
 * `docker compose config` passed, the image built, and the running container served health probes, OAuth protected-resource metadata, authenticated-only `/v1/requests`, token-checked ACS callbacks, and a full MCP initialize and tools-list exchange.
 * Every Bicep template and every environment parameter file compiled.
 * Steps 5.1, 5.2, and 5.3 were not executed. They require a real subscription, registry, ACS number, and Entra registrations that are unavailable in this environment, and Step 5.3 places billable phone calls.
