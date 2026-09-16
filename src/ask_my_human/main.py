@@ -9,7 +9,7 @@ constructs a second service, pool, or Azure client.
 
 import asyncio
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager, suppress
+from contextlib import AsyncExitStack, asynccontextmanager, suppress
 from datetime import UTC, datetime
 
 import httpx
@@ -79,100 +79,98 @@ def _parse_callback_events(payload: object) -> list[CallEvent]:
     return events
 
 
+async def _cancel_maintenance(
+    signal: "_LoopCancellationSignal", tasks: list[asyncio.Task[None]]
+) -> None:
+    signal.cancel()
+    for task in tasks:
+        task.cancel()
+    for task in tasks:
+        with suppress(asyncio.CancelledError):
+            await task
+
+
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = Settings()
     telemetry = configure_observability()
 
-    credential = DefaultAzureCredential()
-    try:
+    async with AsyncExitStack() as stack:
+        credential = DefaultAzureCredential()
+        stack.push_async_callback(credential.close)
         http_client = httpx.AsyncClient()
-        try:
-            call_automation_client = CallAutomationClient(str(settings.acs_endpoint), credential)
-            try:
-                gateway = AcsCallAutomationGateway.from_settings(call_automation_client, settings)
-                callback_validator = AcsCallbackTokenValidator(
-                    http_client, str(settings.acs_callback_audience)
-                )
-
-                pool = PostgresPool(settings.database_url.get_secret_value())
-                await pool.open()
-            except BaseException:
-                await call_automation_client.close()
-                raise
-        except BaseException:
-            await http_client.aclose()
-            raise
-    except BaseException:
-        await credential.close()
-        raise
-    repository = PostgresRequestRepository(pool.pool)
-
-    clock = _SystemClock()
-    service = AskHumanService(
-        repository,
-        gateway,
-        clock,
-        telemetry,
-        deadline_seconds=settings.deadline_seconds,
-        work_cutoff_seconds=settings.work_cutoff_seconds,
-        poll_interval_seconds=settings.poll_interval_milliseconds / 1000,
-    )
-    maintenance = RequestMaintenance(repository, clock, retention_hours=settings.retention_hours)
-    maintenance_signal = _LoopCancellationSignal()
-    maintenance_tasks = [
-        asyncio.create_task(maintenance.run_expiry_loop(maintenance_signal)),
-        asyncio.create_task(maintenance.run_purge_loop(maintenance_signal)),
-    ]
-
-    async def authenticate(request: Request) -> Principal:
-        encoded_principal = request.headers.get(CLIENT_PRINCIPAL_HEADER)
-        return parse_container_apps_principal(encoded_principal, settings.authorized_agent_app_ids)
-
-    async def validate_callback_token(token: str) -> None:
-        await callback_validator.validate("Bearer " + token)
-
-    app.state.settings = settings
-    app.state.pool = pool
-
-    app.include_router(liveness_router)
-    app.include_router(create_readiness_router(settings, pool.pool))
-    app.include_router(create_oauth_metadata_router(settings))
-    app.include_router(create_requests_router(use_case=service, authenticate=authenticate))
-    app.include_router(
-        create_callbacks_router(
-            use_case=service,
-            validate_token=validate_callback_token,
-            parse_events=_parse_callback_events,
+        stack.push_async_callback(http_client.aclose)
+        call_automation_client = CallAutomationClient(str(settings.acs_endpoint), credential)
+        stack.push_async_callback(call_automation_client.close)
+        gateway = AcsCallAutomationGateway.from_settings(call_automation_client, settings)
+        callback_validator = AcsCallbackTokenValidator(
+            http_client, str(settings.acs_callback_audience)
         )
-    )
 
-    mcp_server = create_mcp_server(service)
-    mcp_app = mcp_server.streamable_http_app(
-        streamable_http_path="/mcp",
-        transport_security=TransportSecuritySettings(
-            enable_dns_rebinding_protection=True,
-            allowed_hosts=list(settings.mcp_allowed_hosts),
-            allowed_origins=[],
-        ),
-        host="0.0.0.0",  # noqa: S104 - ingress and auth are enforced by Container Apps
-    )
-    app.mount("/", mcp_app)
+        pool = PostgresPool(settings.database_url.get_secret_value())
+        await pool.open()
+        stack.push_async_callback(pool.close)
+        repository = PostgresRequestRepository(pool.pool)
 
-    async with mcp_server.session_manager.run():
-        try:
-            yield
-        finally:
-            maintenance_signal.cancel()
-            for task in maintenance_tasks:
-                task.cancel()
-            for task in maintenance_tasks:
-                with suppress(asyncio.CancelledError):
-                    await task
-            await pool.close()
-            await call_automation_client.close()
-            await credential.close()
-            await http_client.aclose()
+        clock = _SystemClock()
+        service = AskHumanService(
+            repository,
+            gateway,
+            clock,
+            telemetry,
+            deadline_seconds=settings.deadline_seconds,
+            work_cutoff_seconds=settings.work_cutoff_seconds,
+            poll_interval_seconds=settings.poll_interval_milliseconds / 1000,
+        )
+        maintenance = RequestMaintenance(
+            repository, clock, retention_hours=settings.retention_hours
+        )
+        maintenance_signal = _LoopCancellationSignal()
+        maintenance_tasks = [
+            asyncio.create_task(maintenance.run_expiry_loop(maintenance_signal)),
+            asyncio.create_task(maintenance.run_purge_loop(maintenance_signal)),
+        ]
+        stack.push_async_callback(_cancel_maintenance, maintenance_signal, maintenance_tasks)
+
+        async def authenticate(request: Request) -> Principal:
+            encoded_principal = request.headers.get(CLIENT_PRINCIPAL_HEADER)
+            return parse_container_apps_principal(
+                encoded_principal, settings.authorized_agent_app_ids
+            )
+
+        async def validate_callback_token(token: str) -> None:
+            await callback_validator.validate("Bearer " + token)
+
+        app.state.settings = settings
+        app.state.pool = pool
+
+        app.include_router(liveness_router)
+        app.include_router(create_readiness_router(settings, pool.pool))
+        app.include_router(create_oauth_metadata_router(settings))
+        app.include_router(create_requests_router(use_case=service, authenticate=authenticate))
+        app.include_router(
+            create_callbacks_router(
+                use_case=service,
+                validate_token=validate_callback_token,
+                parse_events=_parse_callback_events,
+            )
+        )
+
+        mcp_server = create_mcp_server(service)
+        mcp_app = mcp_server.streamable_http_app(
+            streamable_http_path="/mcp",
+            transport_security=TransportSecuritySettings(
+                enable_dns_rebinding_protection=True,
+                allowed_hosts=list(settings.mcp_allowed_hosts),
+                allowed_origins=[],
+            ),
+            host="0.0.0.0",  # noqa: S104 - ingress and auth are enforced by Container Apps
+        )
+        app.mount("/", mcp_app)
+
+        await stack.enter_async_context(mcp_server.session_manager.run())
+
+        yield
 
 
 app = FastAPI(lifespan=_lifespan, docs_url=None, redoc_url=None, openapi_url=None)

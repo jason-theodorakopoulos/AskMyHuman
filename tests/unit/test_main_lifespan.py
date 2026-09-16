@@ -57,5 +57,37 @@ async def test_lifespan_closes_already_created_clients_when_pool_open_fails() ->
     call_automation_client_close.assert_awaited_once()
 
 
+@pytest.mark.asyncio
+async def test_lifespan_closes_pool_and_clients_when_mcp_server_creation_fails() -> None:
+    app = FastAPI()
+    credential_close = AsyncMock()
+    http_client_aclose = AsyncMock()
+    call_automation_client_close = AsyncMock()
+    pool_close = AsyncMock()
+
+    with (
+        patch.object(main, "DefaultAzureCredential") as credential_cls,
+        patch.object(main, "httpx") as httpx_module,
+        patch.object(main, "CallAutomationClient") as call_client_cls,
+        patch.object(main, "PostgresPool") as pool_cls,
+        patch.object(main, "create_mcp_server", side_effect=RuntimeError("mcp setup failed")),
+    ):
+        credential_cls.return_value.close = credential_close
+        httpx_module.AsyncClient.return_value.aclose = http_client_aclose
+        call_client_cls.return_value.close = call_automation_client_close
+        pool_cls.return_value.open = AsyncMock()
+        pool_cls.return_value.close = pool_close
+
+        lifespan_context = main._lifespan(app)
+
+        with pytest.raises(RuntimeError, match="mcp setup failed"):
+            await _enter(lifespan_context)
+
+    pool_close.assert_awaited_once()
+    credential_close.assert_awaited_once()
+    http_client_aclose.assert_awaited_once()
+    call_automation_client_close.assert_awaited_once()
+
+
 async def _enter(context: AbstractAsyncContextManager[None]) -> None:
     await context.__aenter__()
