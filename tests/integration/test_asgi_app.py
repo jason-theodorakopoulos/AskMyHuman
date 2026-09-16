@@ -509,6 +509,7 @@ async def test_callback_route_validates_tokens_and_dispatches_events(
             event_type=CallEventType.APPROVED,
             answer=None,
             call_id="call-1",
+            event_id="event-1",
         )
     ]
 
@@ -655,7 +656,13 @@ def test_callback_payload_parsing_forwards_lifecycle_and_technical_events(
     ]
 
     assert parse_callback_events(connected) == [
-        CallEvent(request_id=REQUEST_ID, event_type=event_type, call_id="call-1", acs_code=code)
+        CallEvent(
+            request_id=REQUEST_ID,
+            event_type=event_type,
+            call_id="call-1",
+            acs_code=code,
+            event_id="event-2",
+        )
     ]
 
     with pytest.raises(ValueError):
