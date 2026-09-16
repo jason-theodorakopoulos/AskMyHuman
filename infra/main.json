@@ -1,0 +1,1258 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.46.1.21595",
+      "templateHash": "1754873526871152555"
+    }
+  },
+  "parameters": {
+    "location": {
+      "type": "string",
+      "metadata": {
+        "description": "Azure deployment location."
+      }
+    },
+    "containerImage": {
+      "type": "string",
+      "metadata": {
+        "description": "Content-addressed Container App image reference."
+      }
+    },
+    "containerRegistryServer": {
+      "type": "string",
+      "metadata": {
+        "description": "Existing Azure Container Registry login server."
+      }
+    },
+    "containerRegistryResourceId": {
+      "type": "string",
+      "metadata": {
+        "description": "Existing Azure Container Registry resource ID."
+      }
+    },
+    "postgresAdminPassword": {
+      "type": "securestring",
+      "metadata": {
+        "description": "PostgreSQL administrator password."
+      }
+    },
+    "myMobileNumber": {
+      "type": "securestring",
+      "metadata": {
+        "description": "The sole destination phone number in E.164 format."
+      }
+    },
+    "acsSourcePhoneNumber": {
+      "type": "securestring",
+      "metadata": {
+        "description": "ACS source phone number in E.164 format."
+      }
+    },
+    "entraTenantId": {
+      "type": "string",
+      "metadata": {
+        "description": "Microsoft Entra tenant ID."
+      }
+    },
+    "entraClientId": {
+      "type": "string",
+      "metadata": {
+        "description": "Microsoft Entra protected-resource client ID."
+      }
+    },
+    "entraClientSecret": {
+      "type": "securestring",
+      "metadata": {
+        "description": "Microsoft Entra client secret."
+      }
+    },
+    "authorizedAgentAppIds": {
+      "type": "string",
+      "metadata": {
+        "description": "Comma-separated authorized agent application IDs."
+      }
+    },
+    "existingAcsResourceId": {
+      "type": "string",
+      "metadata": {
+        "description": "Existing ACS resource ID. The resource and source number are external."
+      }
+    },
+    "acsCallbackAudience": {
+      "type": "string",
+      "metadata": {
+        "description": "Public HTTPS service URL used as the ACS callback audience."
+      }
+    },
+    "mcpAllowedHosts": {
+      "type": "string",
+      "metadata": {
+        "description": "Comma-separated public hosts accepted by the MCP transport."
+      }
+    }
+  },
+  "variables": {
+    "resourceNamePrefix": "[format('askmyhuman-{0}', uniqueString(resourceGroup().id))]"
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "askmyhuman-identity",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "resourceNamePrefix": {
+            "value": "[variables('resourceNamePrefix')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.46.1.21595",
+              "templateHash": "14923516212714145242"
+            }
+          },
+          "parameters": {
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "Azure deployment location."
+              }
+            },
+            "resourceNamePrefix": {
+              "type": "string",
+              "metadata": {
+                "description": "Prefix used to name deployed resources."
+              }
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
+              "apiVersion": "2023-01-31",
+              "name": "[format('{0}-identity', parameters('resourceNamePrefix'))]",
+              "location": "[parameters('location')]"
+            }
+          ],
+          "outputs": {
+            "identityResourceId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}-identity', parameters('resourceNamePrefix')))]"
+            },
+            "principalId": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}-identity', parameters('resourceNamePrefix'))), '2023-01-31').principalId]"
+            },
+            "clientId": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}-identity', parameters('resourceNamePrefix'))), '2023-01-31').clientId]"
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "askmyhuman-observability",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "resourceNamePrefix": {
+            "value": "[variables('resourceNamePrefix')]"
+          },
+          "retentionDays": {
+            "value": 30
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.46.1.21595",
+              "templateHash": "11851322607651865047"
+            }
+          },
+          "parameters": {
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "Azure deployment location."
+              }
+            },
+            "resourceNamePrefix": {
+              "type": "string",
+              "metadata": {
+                "description": "Prefix used to name observability resources."
+              }
+            },
+            "retentionDays": {
+              "type": "int",
+              "defaultValue": 30,
+              "allowedValues": [
+                30
+              ],
+              "metadata": {
+                "description": "Log retention period in days. The approved value is 30 days."
+              }
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.OperationalInsights/workspaces",
+              "apiVersion": "2023-09-01",
+              "name": "[format('{0}-logs', parameters('resourceNamePrefix'))]",
+              "location": "[parameters('location')]",
+              "properties": {
+                "publicNetworkAccessForIngestion": "Enabled",
+                "publicNetworkAccessForQuery": "Enabled",
+                "retentionInDays": "[parameters('retentionDays')]",
+                "sku": {
+                  "name": "PerGB2018"
+                }
+              }
+            },
+            {
+              "type": "Microsoft.Insights/components",
+              "apiVersion": "2020-02-02",
+              "name": "[format('{0}-insights', parameters('resourceNamePrefix'))]",
+              "location": "[parameters('location')]",
+              "kind": "web",
+              "properties": {
+                "Application_Type": "web",
+                "IngestionMode": "LogAnalytics",
+                "publicNetworkAccessForIngestion": "Enabled",
+                "publicNetworkAccessForQuery": "Enabled",
+                "RetentionInDays": "[parameters('retentionDays')]",
+                "WorkspaceResourceId": "[resourceId('Microsoft.OperationalInsights/workspaces', format('{0}-logs', parameters('resourceNamePrefix')))]"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.OperationalInsights/workspaces', format('{0}-logs', parameters('resourceNamePrefix')))]"
+              ]
+            }
+          ],
+          "outputs": {
+            "logAnalyticsWorkspaceId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.OperationalInsights/workspaces', format('{0}-logs', parameters('resourceNamePrefix')))]"
+            },
+            "applicationInsightsResourceId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.Insights/components', format('{0}-insights', parameters('resourceNamePrefix')))]"
+            },
+            "applicationInsightsConnectionString": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.Insights/components', format('{0}-insights', parameters('resourceNamePrefix'))), '2020-02-02').ConnectionString]"
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "askmyhuman-postgresql",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "resourceNamePrefix": {
+            "value": "[variables('resourceNamePrefix')]"
+          },
+          "administratorPassword": {
+            "value": "[parameters('postgresAdminPassword')]"
+          },
+          "databaseName": {
+            "value": "askmyhuman"
+          },
+          "serverVersion": {
+            "value": "16"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.46.1.21595",
+              "templateHash": "18169851748081612530"
+            }
+          },
+          "parameters": {
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "Azure deployment location."
+              }
+            },
+            "resourceNamePrefix": {
+              "type": "string",
+              "metadata": {
+                "description": "Prefix used to name PostgreSQL resources."
+              }
+            },
+            "administratorPassword": {
+              "type": "securestring",
+              "metadata": {
+                "description": "PostgreSQL administrator password."
+              }
+            },
+            "databaseName": {
+              "type": "string",
+              "metadata": {
+                "description": "Application database name."
+              }
+            },
+            "serverVersion": {
+              "type": "string",
+              "allowedValues": [
+                "16"
+              ],
+              "metadata": {
+                "description": "PostgreSQL major server version."
+              }
+            }
+          },
+          "variables": {
+            "serverName": "[toLower(format('{0}-postgres-{1}', parameters('resourceNamePrefix'), uniqueString(resourceGroup().id)))]",
+            "administratorLogin": "askmyhumanadmin"
+          },
+          "resources": [
+            {
+              "type": "Microsoft.DBforPostgreSQL/flexibleServers",
+              "apiVersion": "2024-08-01",
+              "name": "[variables('serverName')]",
+              "location": "[parameters('location')]",
+              "sku": {
+                "name": "Standard_B1ms",
+                "tier": "Burstable"
+              },
+              "properties": {
+                "administratorLogin": "[variables('administratorLogin')]",
+                "administratorLoginPassword": "[parameters('administratorPassword')]",
+                "version": "[parameters('serverVersion')]",
+                "authConfig": {
+                  "activeDirectoryAuth": "Disabled",
+                  "passwordAuth": "Enabled"
+                },
+                "backup": {
+                  "backupRetentionDays": 7,
+                  "geoRedundantBackup": "Disabled"
+                },
+                "highAvailability": {
+                  "mode": "Disabled"
+                },
+                "network": {
+                  "publicNetworkAccess": "Enabled"
+                },
+                "storage": {
+                  "storageSizeGB": 32
+                }
+              }
+            },
+            {
+              "type": "Microsoft.DBforPostgreSQL/flexibleServers/firewallRules",
+              "apiVersion": "2024-08-01",
+              "name": "[format('{0}/{1}', variables('serverName'), 'AllowAllAzureServicesAndResourcesWithinAzureIps')]",
+              "properties": {
+                "startIpAddress": "0.0.0.0",
+                "endIpAddress": "0.0.0.0"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.DBforPostgreSQL/flexibleServers', variables('serverName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.DBforPostgreSQL/flexibleServers/configurations",
+              "apiVersion": "2024-08-01",
+              "name": "[format('{0}/{1}', variables('serverName'), 'require_secure_transport')]",
+              "properties": {
+                "source": "user-override",
+                "value": "on"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.DBforPostgreSQL/flexibleServers', variables('serverName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.DBforPostgreSQL/flexibleServers/configurations",
+              "apiVersion": "2024-08-01",
+              "name": "[format('{0}/{1}', variables('serverName'), 'ssl_min_protocol_version')]",
+              "properties": {
+                "source": "user-override",
+                "value": "TLSv1.2"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.DBforPostgreSQL/flexibleServers', variables('serverName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.DBforPostgreSQL/flexibleServers/databases",
+              "apiVersion": "2024-08-01",
+              "name": "[format('{0}/{1}', variables('serverName'), parameters('databaseName'))]",
+              "properties": {
+                "charset": "UTF8",
+                "collation": "en_US.utf8"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.DBforPostgreSQL/flexibleServers', variables('serverName'))]"
+              ]
+            }
+          ],
+          "outputs": {
+            "serverResourceId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.DBforPostgreSQL/flexibleServers', variables('serverName'))]"
+            },
+            "databaseHost": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.DBforPostgreSQL/flexibleServers', variables('serverName')), '2024-08-01').fullyQualifiedDomainName]"
+            },
+            "databaseName": {
+              "type": "string",
+              "value": "[parameters('databaseName')]"
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "askmyhuman-communications",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "resourceNamePrefix": {
+            "value": "[variables('resourceNamePrefix')]"
+          },
+          "existingAcsResourceId": {
+            "value": "[parameters('existingAcsResourceId')]"
+          },
+          "containerIdentityPrincipalId": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'askmyhuman-identity'), '2025-04-01').outputs.principalId.value]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.46.1.21595",
+              "templateHash": "7923559361513295282"
+            }
+          },
+          "parameters": {
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "Azure deployment location."
+              }
+            },
+            "resourceNamePrefix": {
+              "type": "string",
+              "metadata": {
+                "description": "Prefix used to name deployed resources."
+              }
+            },
+            "existingAcsResourceId": {
+              "type": "string",
+              "metadata": {
+                "description": "Resource ID of an existing ACS resource with an outbound-enabled source number and a system-assigned managed identity."
+              }
+            },
+            "containerIdentityPrincipalId": {
+              "type": "string",
+              "metadata": {
+                "description": "Principal ID of the Container App user-assigned managed identity."
+              }
+            }
+          },
+          "variables": {
+            "acsResourceIdSegments": "[split(parameters('existingAcsResourceId'), '/')]",
+            "acsSubscriptionId": "[variables('acsResourceIdSegments')[2]]",
+            "acsResourceGroupName": "[variables('acsResourceIdSegments')[4]]",
+            "acsResourceName": "[variables('acsResourceIdSegments')[8]]",
+            "azureAiResourceName": "[toLower(format('{0}-ai', parameters('resourceNamePrefix')))]",
+            "cognitiveServicesUserRoleId": "a97b65f3-24c7-4388-baec-2e87135dc908"
+          },
+          "resources": [
+            {
+              "type": "Microsoft.CognitiveServices/accounts",
+              "apiVersion": "2024-10-01",
+              "name": "[variables('azureAiResourceName')]",
+              "location": "[parameters('location')]",
+              "kind": "AIServices",
+              "sku": {
+                "name": "S0"
+              },
+              "properties": {
+                "customSubDomainName": "[variables('azureAiResourceName')]",
+                "publicNetworkAccess": "Enabled"
+              }
+            },
+            {
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "scope": "[resourceId('Microsoft.CognitiveServices/accounts', variables('azureAiResourceName'))]",
+              "name": "[guid(resourceId('Microsoft.CognitiveServices/accounts', variables('azureAiResourceName')), extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', variables('acsSubscriptionId'), variables('acsResourceGroupName')), 'Microsoft.Communication/communicationServices', variables('acsResourceName')), variables('cognitiveServicesUserRoleId'))]",
+              "properties": {
+                "principalId": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', variables('acsSubscriptionId'), variables('acsResourceGroupName')), 'Microsoft.Communication/communicationServices', variables('acsResourceName')), '2023-04-01', 'full').identity.principalId]",
+                "principalType": "ServicePrincipal",
+                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('cognitiveServicesUserRoleId'))]"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.CognitiveServices/accounts', variables('azureAiResourceName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Resources/deployments",
+              "apiVersion": "2025-04-01",
+              "name": "communications-acs-role-assignment",
+              "subscriptionId": "[variables('acsSubscriptionId')]",
+              "resourceGroup": "[variables('acsResourceGroupName')]",
+              "properties": {
+                "expressionEvaluationOptions": {
+                  "scope": "inner"
+                },
+                "mode": "Incremental",
+                "parameters": {
+                  "acsResourceName": {
+                    "value": "[variables('acsResourceName')]"
+                  },
+                  "containerIdentityPrincipalId": {
+                    "value": "[parameters('containerIdentityPrincipalId')]"
+                  }
+                },
+                "template": {
+                  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+                  "contentVersion": "1.0.0.0",
+                  "metadata": {
+                    "_generator": {
+                      "name": "bicep",
+                      "version": "0.46.1.21595",
+                      "templateHash": "551450120243786359"
+                    }
+                  },
+                  "parameters": {
+                    "acsResourceName": {
+                      "type": "string",
+                      "metadata": {
+                        "description": "Name of the existing ACS resource."
+                      }
+                    },
+                    "containerIdentityPrincipalId": {
+                      "type": "string",
+                      "metadata": {
+                        "description": "Principal ID of the Container App user-assigned managed identity."
+                      }
+                    }
+                  },
+                  "variables": {
+                    "azureCommunicationServicesDataOwnerRoleId": "0d8b7e87-0907-4e9d-a49d-ad2166c4bf2e"
+                  },
+                  "resources": [
+                    {
+                      "type": "Microsoft.Authorization/roleAssignments",
+                      "apiVersion": "2022-04-01",
+                      "scope": "[resourceId('Microsoft.Communication/communicationServices', parameters('acsResourceName'))]",
+                      "name": "[guid(resourceId('Microsoft.Communication/communicationServices', parameters('acsResourceName')), parameters('containerIdentityPrincipalId'), variables('azureCommunicationServicesDataOwnerRoleId'))]",
+                      "properties": {
+                        "principalId": "[parameters('containerIdentityPrincipalId')]",
+                        "principalType": "ServicePrincipal",
+                        "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('azureCommunicationServicesDataOwnerRoleId'))]"
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          ],
+          "outputs": {
+            "acsResourceId": {
+              "type": "string",
+              "value": "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', variables('acsSubscriptionId'), variables('acsResourceGroupName')), 'Microsoft.Communication/communicationServices', variables('acsResourceName'))]"
+            },
+            "acsEndpoint": {
+              "type": "string",
+              "value": "[format('https://{0}', reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', variables('acsSubscriptionId'), variables('acsResourceGroupName')), 'Microsoft.Communication/communicationServices', variables('acsResourceName')), '2023-04-01').hostName)]"
+            },
+            "azureAiResourceId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.CognitiveServices/accounts', variables('azureAiResourceName'))]"
+            },
+            "azureAiEndpoint": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.CognitiveServices/accounts', variables('azureAiResourceName')), '2024-10-01').endpoint]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deployments', 'askmyhuman-identity')]"
+      ]
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "askmyhuman-container-app",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "resourceNamePrefix": {
+            "value": "[variables('resourceNamePrefix')]"
+          },
+          "containerImage": {
+            "value": "[parameters('containerImage')]"
+          },
+          "containerRegistryServer": {
+            "value": "[parameters('containerRegistryServer')]"
+          },
+          "containerRegistryResourceId": {
+            "value": "[parameters('containerRegistryResourceId')]"
+          },
+          "identityResourceId": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'askmyhuman-identity'), '2025-04-01').outputs.identityResourceId.value]"
+          },
+          "identityClientId": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'askmyhuman-identity'), '2025-04-01').outputs.clientId.value]"
+          },
+          "logAnalyticsWorkspaceId": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'askmyhuman-observability'), '2025-04-01').outputs.logAnalyticsWorkspaceId.value]"
+          },
+          "applicationInsightsConnectionString": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'askmyhuman-observability'), '2025-04-01').outputs.applicationInsightsConnectionString.value]"
+          },
+          "databaseHost": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'askmyhuman-postgresql'), '2025-04-01').outputs.databaseHost.value]"
+          },
+          "databaseName": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'askmyhuman-postgresql'), '2025-04-01').outputs.databaseName.value]"
+          },
+          "postgresAdminPassword": {
+            "value": "[parameters('postgresAdminPassword')]"
+          },
+          "acsEndpoint": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'askmyhuman-communications'), '2025-04-01').outputs.acsEndpoint.value]"
+          },
+          "azureAiEndpoint": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'askmyhuman-communications'), '2025-04-01').outputs.azureAiEndpoint.value]"
+          },
+          "acsSourcePhoneNumber": {
+            "value": "[parameters('acsSourcePhoneNumber')]"
+          },
+          "myMobileNumber": {
+            "value": "[parameters('myMobileNumber')]"
+          },
+          "entraTenantId": {
+            "value": "[parameters('entraTenantId')]"
+          },
+          "entraClientId": {
+            "value": "[parameters('entraClientId')]"
+          },
+          "entraClientSecret": {
+            "value": "[parameters('entraClientSecret')]"
+          },
+          "authorizedAgentAppIds": {
+            "value": "[parameters('authorizedAgentAppIds')]"
+          },
+          "acsCallbackAudience": {
+            "value": "[parameters('acsCallbackAudience')]"
+          },
+          "mcpAllowedHosts": {
+            "value": "[parameters('mcpAllowedHosts')]"
+          },
+          "locale": {
+            "value": "en-US"
+          },
+          "voiceName": {
+            "value": "en-US-AvaMultilingualNeural"
+          },
+          "deadlineSeconds": {
+            "value": 210
+          },
+          "workCutoffSeconds": {
+            "value": 205
+          },
+          "pollIntervalMilliseconds": {
+            "value": 500
+          },
+          "retentionHours": {
+            "value": 24
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.46.1.21595",
+              "templateHash": "3787202492907848701"
+            }
+          },
+          "parameters": {
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "Azure deployment location."
+              }
+            },
+            "resourceNamePrefix": {
+              "type": "string",
+              "metadata": {
+                "description": "Prefix used to name Container Apps resources."
+              }
+            },
+            "containerImage": {
+              "type": "string",
+              "metadata": {
+                "description": "Content-addressed Container App image reference."
+              }
+            },
+            "containerRegistryServer": {
+              "type": "string",
+              "metadata": {
+                "description": "Existing Azure Container Registry login server."
+              }
+            },
+            "containerRegistryResourceId": {
+              "type": "string",
+              "metadata": {
+                "description": "Existing Azure Container Registry resource ID."
+              }
+            },
+            "identityResourceId": {
+              "type": "string",
+              "metadata": {
+                "description": "User-assigned managed identity resource ID."
+              }
+            },
+            "identityClientId": {
+              "type": "string",
+              "metadata": {
+                "description": "User-assigned managed identity client ID."
+              }
+            },
+            "logAnalyticsWorkspaceId": {
+              "type": "string",
+              "metadata": {
+                "description": "Resource ID of the Log Analytics workspace."
+              }
+            },
+            "applicationInsightsConnectionString": {
+              "type": "securestring",
+              "metadata": {
+                "description": "Application Insights connection string."
+              }
+            },
+            "databaseHost": {
+              "type": "string",
+              "metadata": {
+                "description": "PostgreSQL server fully qualified domain name."
+              }
+            },
+            "databaseName": {
+              "type": "string",
+              "metadata": {
+                "description": "Application database name."
+              }
+            },
+            "postgresAdminPassword": {
+              "type": "securestring",
+              "metadata": {
+                "description": "PostgreSQL administrator password."
+              }
+            },
+            "acsEndpoint": {
+              "type": "string",
+              "metadata": {
+                "description": "Azure Communication Services endpoint."
+              }
+            },
+            "azureAiEndpoint": {
+              "type": "string",
+              "metadata": {
+                "description": "Azure AI services endpoint."
+              }
+            },
+            "acsSourcePhoneNumber": {
+              "type": "securestring",
+              "metadata": {
+                "description": "ACS source phone number in E.164 format."
+              }
+            },
+            "myMobileNumber": {
+              "type": "securestring",
+              "metadata": {
+                "description": "The sole destination phone number in E.164 format."
+              }
+            },
+            "entraTenantId": {
+              "type": "string",
+              "metadata": {
+                "description": "Microsoft Entra tenant ID."
+              }
+            },
+            "entraClientId": {
+              "type": "string",
+              "metadata": {
+                "description": "Microsoft Entra protected-resource client ID."
+              }
+            },
+            "entraClientSecret": {
+              "type": "securestring",
+              "metadata": {
+                "description": "Microsoft Entra client secret used by Container Apps authentication."
+              }
+            },
+            "authorizedAgentAppIds": {
+              "type": "string",
+              "metadata": {
+                "description": "Comma-separated authorized agent application IDs."
+              }
+            },
+            "acsCallbackAudience": {
+              "type": "string",
+              "metadata": {
+                "description": "Audience expected on ACS callback bearer tokens."
+              }
+            },
+            "mcpAllowedHosts": {
+              "type": "string",
+              "metadata": {
+                "description": "Comma-separated hosts accepted by the MCP transport."
+              }
+            },
+            "locale": {
+              "type": "string",
+              "metadata": {
+                "description": "Speech recognition locale."
+              }
+            },
+            "voiceName": {
+              "type": "string",
+              "metadata": {
+                "description": "Azure AI speech voice name."
+              }
+            },
+            "deadlineSeconds": {
+              "type": "int",
+              "metadata": {
+                "description": "Application request deadline in seconds."
+              }
+            },
+            "workCutoffSeconds": {
+              "type": "int",
+              "metadata": {
+                "description": "Latest point at which new call work may begin, in seconds."
+              }
+            },
+            "pollIntervalMilliseconds": {
+              "type": "int",
+              "metadata": {
+                "description": "Request status polling interval in milliseconds."
+              }
+            },
+            "retentionHours": {
+              "type": "int",
+              "metadata": {
+                "description": "Terminal request retention period in hours."
+              }
+            }
+          },
+          "variables": {
+            "containerAppsEnvironmentName": "[format('{0}-environment', parameters('resourceNamePrefix'))]",
+            "containerAppName": "[format('{0}-app', parameters('resourceNamePrefix'))]",
+            "postgresAdministratorLogin": "askmyhumanadmin",
+            "registryResourceIdSegments": "[split(parameters('containerRegistryResourceId'), '/')]",
+            "registrySubscriptionId": "[variables('registryResourceIdSegments')[2]]",
+            "registryResourceGroupName": "[variables('registryResourceIdSegments')[4]]",
+            "registryName": "[variables('registryResourceIdSegments')[8]]"
+          },
+          "resources": [
+            {
+              "type": "Microsoft.App/managedEnvironments",
+              "apiVersion": "2024-03-01",
+              "name": "[variables('containerAppsEnvironmentName')]",
+              "location": "[parameters('location')]",
+              "properties": {
+                "appLogsConfiguration": {
+                  "destination": "log-analytics",
+                  "logAnalyticsConfiguration": {
+                    "customerId": "[reference(resourceId('Microsoft.OperationalInsights/workspaces', last(split(parameters('logAnalyticsWorkspaceId'), '/'))), '2023-09-01').customerId]",
+                    "sharedKey": "[listKeys(resourceId('Microsoft.OperationalInsights/workspaces', last(split(parameters('logAnalyticsWorkspaceId'), '/'))), '2023-09-01').primarySharedKey]"
+                  }
+                },
+                "zoneRedundant": false
+              }
+            },
+            {
+              "type": "Microsoft.App/containerApps",
+              "apiVersion": "2024-03-01",
+              "name": "[variables('containerAppName')]",
+              "location": "[parameters('location')]",
+              "identity": {
+                "type": "UserAssigned",
+                "userAssignedIdentities": {
+                  "[format('{0}', parameters('identityResourceId'))]": {}
+                }
+              },
+              "properties": {
+                "environmentId": "[resourceId('Microsoft.App/managedEnvironments', variables('containerAppsEnvironmentName'))]",
+                "configuration": {
+                  "activeRevisionsMode": "Single",
+                  "ingress": {
+                    "allowInsecure": false,
+                    "external": true,
+                    "targetPort": 8000,
+                    "traffic": [
+                      {
+                        "latestRevision": true,
+                        "weight": 100
+                      }
+                    ],
+                    "transport": "auto"
+                  },
+                  "registries": [
+                    {
+                      "identity": "[parameters('identityResourceId')]",
+                      "server": "[parameters('containerRegistryServer')]"
+                    }
+                  ],
+                  "secrets": [
+                    {
+                      "name": "application-insights-connection-string",
+                      "value": "[parameters('applicationInsightsConnectionString')]"
+                    },
+                    {
+                      "name": "database-url",
+                      "value": "[format('postgresql+psycopg://{0}:{1}@{2}:5432/{3}?sslmode=require', variables('postgresAdministratorLogin'), uriComponent(parameters('postgresAdminPassword')), parameters('databaseHost'), parameters('databaseName'))]"
+                    },
+                    {
+                      "name": "acs-source-phone-number",
+                      "value": "[parameters('acsSourcePhoneNumber')]"
+                    },
+                    {
+                      "name": "my-mobile-number",
+                      "value": "[parameters('myMobileNumber')]"
+                    },
+                    {
+                      "name": "entra-client-secret",
+                      "value": "[parameters('entraClientSecret')]"
+                    }
+                  ]
+                },
+                "template": {
+                  "containers": [
+                    {
+                      "name": "ask-my-human",
+                      "image": "[parameters('containerImage')]",
+                      "env": [
+                        {
+                          "name": "AZURE_CLIENT_ID",
+                          "value": "[parameters('identityClientId')]"
+                        },
+                        {
+                          "name": "APPLICATIONINSIGHTS_CONNECTION_STRING",
+                          "secretRef": "application-insights-connection-string"
+                        },
+                        {
+                          "name": "DATABASE_URL",
+                          "secretRef": "database-url"
+                        },
+                        {
+                          "name": "ACS_ENDPOINT",
+                          "value": "[parameters('acsEndpoint')]"
+                        },
+                        {
+                          "name": "ACS_SOURCE_PHONE_NUMBER",
+                          "secretRef": "acs-source-phone-number"
+                        },
+                        {
+                          "name": "MY_MOBILE_NUMBER",
+                          "secretRef": "my-mobile-number"
+                        },
+                        {
+                          "name": "AZURE_AI_ENDPOINT",
+                          "value": "[parameters('azureAiEndpoint')]"
+                        },
+                        {
+                          "name": "ACS_CALLBACK_AUDIENCE",
+                          "value": "[parameters('acsCallbackAudience')]"
+                        },
+                        {
+                          "name": "ENTRA_TENANT_ID",
+                          "value": "[parameters('entraTenantId')]"
+                        },
+                        {
+                          "name": "ENTRA_CLIENT_ID",
+                          "value": "[parameters('entraClientId')]"
+                        },
+                        {
+                          "name": "AUTHORIZED_AGENT_APP_IDS",
+                          "value": "[parameters('authorizedAgentAppIds')]"
+                        },
+                        {
+                          "name": "MCP_ALLOWED_HOSTS",
+                          "value": "[parameters('mcpAllowedHosts')]"
+                        },
+                        {
+                          "name": "LOCALE",
+                          "value": "[parameters('locale')]"
+                        },
+                        {
+                          "name": "VOICE_NAME",
+                          "value": "[parameters('voiceName')]"
+                        },
+                        {
+                          "name": "DEADLINE_SECONDS",
+                          "value": "[string(parameters('deadlineSeconds'))]"
+                        },
+                        {
+                          "name": "WORK_CUTOFF_SECONDS",
+                          "value": "[string(parameters('workCutoffSeconds'))]"
+                        },
+                        {
+                          "name": "POLL_INTERVAL_MILLISECONDS",
+                          "value": "[string(parameters('pollIntervalMilliseconds'))]"
+                        },
+                        {
+                          "name": "RETENTION_HOURS",
+                          "value": "[string(parameters('retentionHours'))]"
+                        }
+                      ],
+                      "probes": [
+                        {
+                          "type": "Liveness",
+                          "httpGet": {
+                            "path": "/health/live",
+                            "port": 8000,
+                            "scheme": "HTTP"
+                          },
+                          "initialDelaySeconds": 10,
+                          "periodSeconds": 10,
+                          "timeoutSeconds": 5,
+                          "failureThreshold": 3
+                        },
+                        {
+                          "type": "Readiness",
+                          "httpGet": {
+                            "path": "/health/ready",
+                            "port": 8000,
+                            "scheme": "HTTP"
+                          },
+                          "initialDelaySeconds": 5,
+                          "periodSeconds": 5,
+                          "timeoutSeconds": 5,
+                          "failureThreshold": 3,
+                          "successThreshold": 1
+                        }
+                      ],
+                      "resources": {
+                        "cpu": "[json('0.5')]",
+                        "memory": "1Gi"
+                      }
+                    }
+                  ],
+                  "scale": {
+                    "minReplicas": 1,
+                    "maxReplicas": 1
+                  }
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.App/managedEnvironments', variables('containerAppsEnvironmentName'))]",
+                "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', variables('registrySubscriptionId'), variables('registryResourceGroupName')), 'Microsoft.Resources/deployments', format('{0}-acr-pull', variables('containerAppName')))]"
+              ]
+            },
+            {
+              "type": "Microsoft.App/containerApps/authConfigs",
+              "apiVersion": "2024-03-01",
+              "name": "[format('{0}/{1}', variables('containerAppName'), 'current')]",
+              "properties": {
+                "globalValidation": {
+                  "excludedPaths": [
+                    "/v1/callbacks/acs"
+                  ],
+                  "unauthenticatedClientAction": "Return401"
+                },
+                "identityProviders": {
+                  "azureActiveDirectory": {
+                    "enabled": true,
+                    "registration": {
+                      "clientId": "[parameters('entraClientId')]",
+                      "clientSecretSettingName": "entra-client-secret",
+                      "openIdIssuer": "[format('{0}{1}/v2.0', environment().authentication.loginEndpoint, parameters('entraTenantId'))]"
+                    },
+                    "validation": {
+                      "allowedAudiences": [
+                        "[format('api://{0}', parameters('entraClientId'))]",
+                        "[parameters('entraClientId')]"
+                      ],
+                      "defaultAuthorizationPolicy": {
+                        "allowedApplications": "[split(parameters('authorizedAgentAppIds'), ',')]"
+                      }
+                    }
+                  }
+                },
+                "login": {
+                  "tokenStore": {
+                    "enabled": false
+                  }
+                },
+                "platform": {
+                  "enabled": true,
+                  "runtimeVersion": "~1"
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.App/containerApps', variables('containerAppName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Resources/deployments",
+              "apiVersion": "2025-04-01",
+              "name": "[format('{0}-acr-pull', variables('containerAppName'))]",
+              "subscriptionId": "[variables('registrySubscriptionId')]",
+              "resourceGroup": "[variables('registryResourceGroupName')]",
+              "properties": {
+                "expressionEvaluationOptions": {
+                  "scope": "inner"
+                },
+                "mode": "Incremental",
+                "parameters": {
+                  "containerRegistryName": {
+                    "value": "[variables('registryName')]"
+                  },
+                  "principalId": {
+                    "value": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', last(split(parameters('identityResourceId'), '/'))), '2023-01-31').principalId]"
+                  }
+                },
+                "template": {
+                  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+                  "contentVersion": "1.0.0.0",
+                  "metadata": {
+                    "_generator": {
+                      "name": "bicep",
+                      "version": "0.46.1.21595",
+                      "templateHash": "13765267058693794261"
+                    }
+                  },
+                  "parameters": {
+                    "containerRegistryName": {
+                      "type": "string",
+                      "metadata": {
+                        "description": "Existing Azure Container Registry name."
+                      }
+                    },
+                    "principalId": {
+                      "type": "string",
+                      "metadata": {
+                        "description": "Managed identity principal ID granted pull access."
+                      }
+                    }
+                  },
+                  "variables": {
+                    "acrPullRoleDefinitionId": "7f951dda-4ed3-4680-a7ca-43fe172d538d"
+                  },
+                  "resources": [
+                    {
+                      "type": "Microsoft.Authorization/roleAssignments",
+                      "apiVersion": "2022-04-01",
+                      "scope": "[resourceId('Microsoft.ContainerRegistry/registries', parameters('containerRegistryName'))]",
+                      "name": "[guid(resourceId('Microsoft.ContainerRegistry/registries', parameters('containerRegistryName')), parameters('principalId'), variables('acrPullRoleDefinitionId'))]",
+                      "properties": {
+                        "principalId": "[parameters('principalId')]",
+                        "principalType": "ServicePrincipal",
+                        "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('acrPullRoleDefinitionId'))]"
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          ],
+          "outputs": {
+            "containerAppName": {
+              "type": "string",
+              "value": "[variables('containerAppName')]"
+            },
+            "containerAppResourceId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.App/containerApps', variables('containerAppName'))]"
+            },
+            "fqdn": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.App/containerApps', variables('containerAppName')), '2024-03-01').configuration.ingress.fqdn]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deployments', 'askmyhuman-communications')]",
+        "[resourceId('Microsoft.Resources/deployments', 'askmyhuman-identity')]",
+        "[resourceId('Microsoft.Resources/deployments', 'askmyhuman-observability')]",
+        "[resourceId('Microsoft.Resources/deployments', 'askmyhuman-postgresql')]"
+      ]
+    }
+  ],
+  "outputs": {
+    "deploymentLocation": {
+      "type": "string",
+      "value": "[parameters('location')]"
+    },
+    "containerAppName": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'askmyhuman-container-app'), '2025-04-01').outputs.containerAppName.value]"
+    },
+    "containerAppResourceId": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'askmyhuman-container-app'), '2025-04-01').outputs.containerAppResourceId.value]"
+    },
+    "fqdn": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'askmyhuman-container-app'), '2025-04-01').outputs.fqdn.value]"
+    }
+  }
+}

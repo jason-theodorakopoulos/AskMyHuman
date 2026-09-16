@@ -11,8 +11,10 @@ from ask_my_human.contracts import (
     AskHumanResult,
     ExecutionError,
     Outcome,
+    RequestKind,
     RequestStatus,
 )
+from ask_my_human.errors import ErrorCode
 
 SCHEMAS = Path(__file__).resolve().parents[2] / "schemas"
 
@@ -22,7 +24,9 @@ def validate(filename: str, instance: Mapping[str, object]) -> None:
 
 
 def test_request_schema_validates_normalized_approval() -> None:
-    request = AskHumanRequest(kind="approval", prompt="  Deploy now?  ", idempotencyKey=uuid4())
+    request = AskHumanRequest(
+        kind=RequestKind.APPROVAL, prompt="  Deploy now?  ", idempotencyKey=uuid4()
+    )
     payload = request.model_dump(by_alias=True, mode="json")
     assert payload["prompt"] == "Deploy now?"
     validate("ask-human-request.schema.json", payload)
@@ -54,7 +58,10 @@ def test_request_schema_validates_normalized_approval() -> None:
         ),
         (
             ExecutionError(
-                requestId=None, code="invalid_request", message="Invalid request.", retryable=False
+                requestId=None,
+                code=ErrorCode.INVALID_REQUEST,
+                message="Invalid request.",
+                retryable=False,
             ),
             "ask-human-error.schema.json",
         ),
@@ -86,7 +93,7 @@ def test_invalid_result_combination_is_rejected() -> None:
     ],
 )
 def test_result_schema_rejects_invalid_discriminator_combinations(
-    payload: dict[str, object],
+    payload: dict[str, str],
 ) -> None:
     with pytest.raises(jsonschema.ValidationError):
         validate("ask-human-result.schema.json", payload)
