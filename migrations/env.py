@@ -1,4 +1,5 @@
 import os
+import re
 from logging.config import fileConfig
 
 from alembic import context
@@ -9,25 +10,17 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
+_database_url = os.environ.get("DATABASE_URL")
+if _database_url:
+    _database_url = re.sub(r"^postgres(ql)?://", "postgresql+psycopg://", _database_url, count=1)
+    config.set_main_option("sqlalchemy.url", _database_url)
+
 target_metadata = None
-
-
-def database_url() -> str:
-    """Prefer an explicitly configured URL, then the deployed DATABASE_URL."""
-    configured = config.get_main_option("sqlalchemy.url", "")
-    if configured:
-        return configured
-    url = os.environ.get("DATABASE_URL", "")
-    if not url:
-        raise RuntimeError("DATABASE_URL must be set to run migrations")
-    if url.startswith("postgresql://"):
-        return url.replace("postgresql://", "postgresql+psycopg://", 1)
-    return url
 
 
 def run_migrations_offline() -> None:
     context.configure(
-        url=database_url(),
+        url=config.get_main_option("sqlalchemy.url"),
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
@@ -38,10 +31,8 @@ def run_migrations_offline() -> None:
 
 
 def run_migrations_online() -> None:
-    section = dict(config.get_section(config.config_ini_section, {}))
-    section["sqlalchemy.url"] = database_url()
     connectable = engine_from_config(
-        section,
+        config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
     )

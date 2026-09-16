@@ -1,4 +1,5 @@
 import json
+from collections.abc import Mapping
 from pathlib import Path
 from uuid import uuid4
 
@@ -10,18 +11,22 @@ from ask_my_human.contracts import (
     AskHumanResult,
     ExecutionError,
     Outcome,
+    RequestKind,
     RequestStatus,
 )
+from ask_my_human.errors import ErrorCode
 
 SCHEMAS = Path(__file__).resolve().parents[2] / "schemas"
 
 
-def validate(filename: str, instance: dict[str, object]) -> None:
+def validate(filename: str, instance: Mapping[str, object]) -> None:
     jsonschema.Draft202012Validator(json.loads((SCHEMAS / filename).read_text())).validate(instance)
 
 
 def test_request_schema_validates_normalized_approval() -> None:
-    request = AskHumanRequest(kind="approval", prompt="  Deploy now?  ", idempotencyKey=uuid4())
+    request = AskHumanRequest(
+        kind=RequestKind.APPROVAL, prompt="  Deploy now?  ", idempotencyKey=uuid4()
+    )
     payload = request.model_dump(by_alias=True, mode="json")
     assert payload["prompt"] == "Deploy now?"
     validate("ask-human-request.schema.json", payload)
@@ -53,14 +58,19 @@ def test_request_schema_validates_normalized_approval() -> None:
         ),
         (
             ExecutionError(
-                requestId=None, code="invalid_request", message="Invalid request.", retryable=False
+                requestId=None,
+                code=ErrorCode.INVALID_REQUEST,
+                message="Invalid request.",
+                retryable=False,
             ),
             "ask-human-error.schema.json",
         ),
     ],
 )
-def test_terminal_contracts_validate(result: object, filename: str) -> None:
-    validate(filename, result.model_dump(by_alias=True, mode="json"))  # type: ignore[union-attr]
+def test_terminal_contracts_validate(
+    result: AskHumanResult | ExecutionError, filename: str
+) -> None:
+    validate(filename, result.model_dump(by_alias=True, mode="json"))
 
 
 def test_invalid_result_combination_is_rejected() -> None:
@@ -83,7 +93,7 @@ def test_invalid_result_combination_is_rejected() -> None:
     ],
 )
 def test_result_schema_rejects_invalid_discriminator_combinations(
-    payload: dict[str, object],
+    payload: dict[str, str],
 ) -> None:
     with pytest.raises(jsonschema.ValidationError):
         validate("ask-human-result.schema.json", payload)
@@ -111,4 +121,4 @@ def test_request_model_and_schema_reject_same_overlong_wire_prompt() -> None:
 
 def test_unknown_request_field_is_rejected() -> None:
     with pytest.raises(ValueError):
-        AskHumanRequest(kind="input", prompt="Need context", idempotencyKey=uuid4(), extra=True)
+        AskHumanRequest(kind="input", prompt="Need context", idempotencyKey=uuid4(), extra=True)  # type: ignore[call-arg]

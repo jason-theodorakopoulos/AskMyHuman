@@ -1,45 +1,31 @@
-"""Sole ASGI composition root for the AskMyHuman service."""
+"""Sole ASGI composition root: settings, adapters, routes, and lifespan ownership."""
 
 from __future__ import annotations
 
 import asyncio
-import logging
-import os
-from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, Sequence
-from contextlib import AsyncExitStack, asynccontextmanager
-from dataclasses import dataclass
+from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
+from contextlib import AsyncExitStack, asynccontextmanager, suppress
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any, Protocol
 
 import httpx
 from azure.communication.callautomation.aio import CallAutomationClient
 from azure.identity.aio import DefaultAzureCredential
 from fastapi import FastAPI, Request
-from mcp.server.auth.middleware.auth_context import auth_context_var
-from mcp.server.auth.middleware.bearer_auth import AuthenticatedUser
-from mcp.server.auth.provider import AccessToken
 from mcp.server.transport_security import TransportSecuritySettings
-from starlette.types import ASGIApp, Receive, Scope, Send
 
 from ask_my_human.api.callbacks import create_callbacks_router
-from ask_my_human.api.health import create_readiness_router, liveness_router
+from ask_my_human.api.health import PoolState, create_readiness_router, liveness_router
 from ask_my_human.api.oauth_metadata import create_oauth_metadata_router
 from ask_my_human.api.requests import create_requests_router
 from ask_my_human.application.maintenance import RequestMaintenance
-from ask_my_human.application.ports import (
-    AskHumanUseCase,
-    CallAutomationGateway,
-    CancellationSignal,
-    RequestRepository,
-    Telemetry,
-)
+from ask_my_human.application.ports import AskHumanUseCase
 from ask_my_human.application.service import AskHumanService
 from ask_my_human.config import Settings
-from ask_my_human.contracts import AskHumanRequest, AskHumanResult
 from ask_my_human.domain.models import CallEvent, Principal
-from ask_my_human.errors import AskMyHumanError, ErrorCode
-from ask_my_human.mcp_adapter.server import create_streamable_http_app
-from ask_my_human.observability import AzureMonitorTelemetry, configure_observability
+from ask_my_human.mcp_adapter.server import create_mcp_server
+from ask_my_human.observability import configure_observability
 from ask_my_human.persistence.pool import PostgresPool
 from ask_my_human.persistence.repository import PostgresRequestRepository
 from ask_my_human.security.acs_callback import AcsCallbackTokenValidator
@@ -47,41 +33,35 @@ from ask_my_human.security.agent import parse_container_apps_principal
 from ask_my_human.telephony.acs_client import AcsCallAutomationGateway
 from ask_my_human.telephony.events import parse_callback_event
 
-logger = logging.getLogger(__name__)
+PRINCIPAL_HEADER = "x-ms-client-principal"
 
-CLIENT_PRINCIPAL_HEADER = "x-ms-client-principal"
-CONNECTION_STRING_VARIABLE = "APPLICATIONINSIGHTS_CONNECTION_STRING"
+_cached_app: FastAPI | None = None
 
-CallbackTokenValidator = Callable[[str], Awaitable[None]]
+if TYPE_CHECKING:
+    # Declared for readers and type checkers; built on first access by __getattr__.
+    app: FastAPI
+
+
+class PoolLifecycle(Protocol):
+    """Pool surface the composition root opens and closes."""
+
+    async def open(self) -> None: ...
+
+    async def close(self) -> None: ...
 
 
 class SystemClock:
-    """Production clock backed by wall time and the running event loop."""
+    """Wall-clock and sleep implementation for the deployed process."""
 
     def now(self) -> datetime:
-        return datetime.now(tz=UTC)
+        return datetime.now(UTC)
 
     async def sleep(self, seconds: float) -> None:
         await asyncio.sleep(seconds)
 
 
-@dataclass(frozen=True, slots=True)
-class Runtime:
-    """External resources owned by exactly one application lifespan."""
-
-    pool: PostgresPool
-    repository: RequestRepository
-    gateway: CallAutomationGateway
-    telemetry: Telemetry
-    validate_callback_token: CallbackTokenValidator
-    close: Callable[[], Awaitable[None]]
-
-
-RuntimeFactory = Callable[[Settings], Awaitable[Runtime]]
-
-
-class _LifespanCancellation:
-    """Cancellation signal that shutdown sets for the maintenance loops."""
+class ShutdownSignal:
+    """Cancellation signal that maintenance loops observe during shutdown."""
 
     def __init__(self) -> None:
         self._event = asyncio.Event()
@@ -97,280 +77,175 @@ class _LifespanCancellation:
         self._event.set()
 
 
-class _UseCaseSlot:
-    """Late-bound use case so routers can be built before startup."""
+@dataclass(slots=True)
+class ApplicationComponents:
+    """Everything the ASGI application needs, built once per process."""
 
-    def __init__(self) -> None:
-        self._delegate: AskHumanUseCase | None = None
-
-    def bind(self, delegate: AskHumanUseCase) -> None:
-        self._delegate = delegate
-
-    def unbind(self) -> None:
-        self._delegate = None
-
-    def _require(self) -> AskHumanUseCase:
-        if self._delegate is None:
-            raise AskMyHumanError(
-                ErrorCode.DEPENDENCY_FAILURE,
-                "The service is not ready to accept requests.",
-            )
-        return self._delegate
-
-    async def ask(
-        self,
-        principal: Principal,
-        request: AskHumanRequest,
-        cancellation: CancellationSignal,
-    ) -> AskHumanResult:
-        return await self._require().ask(principal, request, cancellation)
-
-    async def handle_call_event(self, event: CallEvent) -> None:
-        await self._require().handle_call_event(event)
-
-
-class _CallbackValidatorSlot:
-    """Late-bound ACS callback token validator owned by the lifespan."""
-
-    def __init__(self) -> None:
-        self._validate: CallbackTokenValidator | None = None
-
-    def bind(self, validate: CallbackTokenValidator) -> None:
-        self._validate = validate
-
-    def unbind(self) -> None:
-        self._validate = None
-
-    async def validate(self, token: str) -> None:
-        if self._validate is None:
-            raise AskMyHumanError(
-                ErrorCode.DEPENDENCY_FAILURE,
-                "Callback validation is unavailable.",
-            )
-        await self._validate(token)
-
-
-class _PoolSlot:
-    """Readiness view over the pool that only exists while the lifespan runs."""
-
-    def __init__(self) -> None:
-        self._pool: PostgresPool | None = None
-
-    def bind(self, pool: PostgresPool) -> None:
-        self._pool = pool
-
-    def unbind(self) -> None:
-        self._pool = None
-
-    @property
-    def closed(self) -> bool:
-        return self._pool is None or bool(self._pool.pool.closed)
-
-
-class _ClientPrincipalAuthContextMiddleware:
-    """Expose the ingress-validated principal to the MCP auth context."""
-
-    def __init__(self, app: ASGIApp, authorized_application_ids: Sequence[str]) -> None:
-        self._app = app
-        self._authorized_application_ids = tuple(authorized_application_ids)
-
-    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        principal = self._principal(scope) if scope["type"] == "http" else None
-        if principal is None:
-            await self._app(scope, receive, send)
-            return
-
-        user = AuthenticatedUser(
-            AccessToken(
-                token="",
-                client_id=principal.application_id,
-                scopes=[],
-                subject=principal.subject_id,
-            )
-        )
-        reset_token = auth_context_var.set(user)
-        try:
-            await self._app(scope, receive, send)
-        finally:
-            auth_context_var.reset(reset_token)
-
-    def _principal(self, scope: Scope) -> Principal | None:
-        encoded: str | None = None
-        for name, value in scope.get("headers", ()):
-            if name.decode("latin-1").lower() == CLIENT_PRINCIPAL_HEADER:
-                encoded = value.decode("latin-1")
-                break
-        try:
-            return parse_container_apps_principal(encoded, self._authorized_application_ids)
-        except AskMyHumanError:
-            return None
+    settings: Settings
+    pool: PoolLifecycle
+    pool_state: PoolState
+    use_case: AskHumanUseCase
+    maintenance: RequestMaintenance
+    validate_callback_token: Callable[[str], Awaitable[None]]
+    # Client cleanups in shutdown order; the pool closes before them.
+    closers: tuple[Callable[[], Awaitable[None]], ...] = field(default_factory=tuple)
 
 
 def parse_callback_events(payload: object) -> Sequence[CallEvent]:
-    """Map one ACS CloudEvent batch onto terminal domain events."""
-    items = payload if isinstance(payload, list) else [payload]
+    """Map an ACS CloudEvent batch onto the domain events the service handles."""
+    if not isinstance(payload, list):
+        raise ValueError("callback payload must be a CloudEvent array")
     events: list[CallEvent] = []
-    for item in items:
-        if not isinstance(item, Mapping):
+    for item in payload:
+        if not isinstance(item, dict):
             raise ValueError("callback payload must contain CloudEvent objects")
-        event = parse_callback_event(item).call_event
-        if event is not None:
-            events.append(event)
+        call_event = parse_callback_event(item).call_event
+        if call_event is not None:
+            events.append(call_event)
     return events
 
 
 def load_settings() -> Settings:
-    """Read every setting from the environment through the sole settings boundary."""
-    return Settings()  # type: ignore[call-arg]
+    """Read every setting from the process environment exactly once."""
+    return Settings()
 
 
-def _configure_telemetry() -> Telemetry:
-    connection_string = os.getenv(CONNECTION_STRING_VARIABLE)
-    if not connection_string:
-        # Local runs stay in-process instead of exporting to Azure Monitor.
-        return AzureMonitorTelemetry()
-    return configure_observability(connection_string=connection_string)
+def build_components(settings: Settings) -> ApplicationComponents:
+    """Construct the deployed adapters without performing any network calls."""
+    telemetry = configure_observability()
+    clock = SystemClock()
 
-
-async def create_azure_runtime(settings: Settings) -> Runtime:
-    """Build every Azure-backed dependency exactly once per process."""
-    telemetry = _configure_telemetry()
     credential = DefaultAzureCredential()
-    call_client = CallAutomationClient(str(settings.acs_endpoint), credential)
-    http_client = httpx.AsyncClient()
+    acs_client = CallAutomationClient(str(settings.acs_endpoint), credential)
+    gateway = AcsCallAutomationGateway.from_settings(acs_client, settings)
+
     pool = PostgresPool(settings.database_url.get_secret_value())
+    repository = PostgresRequestRepository(pool.pool)
+
+    service = AskHumanService(
+        repository,
+        gateway,
+        clock,
+        telemetry,
+        deadline_seconds=settings.deadline_seconds,
+        work_cutoff_seconds=settings.work_cutoff_seconds,
+        poll_interval_seconds=settings.poll_interval_milliseconds / 1000,
+    )
+    # The expiry and purge cadences stay at the RequestMaintenance defaults of one second
+    # and one hour; only the retention window is operator-configurable.
+    maintenance = RequestMaintenance(
+        repository,
+        clock,
+        retention_hours=settings.retention_hours,
+    )
+
+    http_client = httpx.AsyncClient()
     validator = AcsCallbackTokenValidator(http_client, str(settings.acs_callback_audience))
 
-    async def close() -> None:
-        await http_client.aclose()
-        await call_client.close()
-        await credential.close()
-
     async def validate_callback_token(token: str) -> None:
-        await validator.validate("Bearer " + token)
+        # The router forwards the bare token; the validator owns scheme parsing.
+        await validator.validate(" ".join(("Bearer", token)))
 
-    return Runtime(
+    return ApplicationComponents(
+        settings=settings,
         pool=pool,
-        repository=PostgresRequestRepository(pool.pool),
-        gateway=AcsCallAutomationGateway.from_settings(call_client, settings),
-        telemetry=telemetry,
+        pool_state=pool.pool,
+        use_case=service,
+        maintenance=maintenance,
         validate_callback_token=validate_callback_token,
-        close=close,
+        closers=(acs_client.close, credential.close, http_client.aclose),
     )
 
 
-def _transport_security(allowed_hosts: Sequence[str]) -> TransportSecuritySettings:
-    """Accept each configured host with or without an explicit port."""
-    hosts = [pattern for host in allowed_hosts for pattern in (host, f"{host}:*")]
-    origins = [f"{scheme}://{pattern}" for pattern in hosts for scheme in ("https", "http")]
-    return TransportSecuritySettings(
-        enable_dns_rebinding_protection=True,
-        allowed_hosts=hosts,
-        allowed_origins=origins,
-    )
+def create_app(components: ApplicationComponents | None = None) -> FastAPI:
+    """Compose one FastAPI application that also serves the MCP transport."""
+    resolved = components if components is not None else build_components(load_settings())
+    settings = resolved.settings
 
-
-async def _stop_tasks(
-    cancellation: _LifespanCancellation, tasks: Sequence[asyncio.Task[None]]
-) -> None:
-    cancellation.cancel()
-    for task in tasks:
-        task.cancel()
-    results = await asyncio.gather(*tasks, return_exceptions=True)
-    for result in results:
-        if isinstance(result, BaseException) and not isinstance(result, asyncio.CancelledError):
-            logger.error("A maintenance loop failed during shutdown.", exc_info=result)
-
-
-def create_app(
-    settings: Settings | None = None,
-    *,
-    runtime_factory: RuntimeFactory = create_azure_runtime,
-) -> FastAPI:
-    """Compose HTTP routes, the MCP transport, and lifespan-owned dependencies."""
-    resolved = settings if settings is not None else load_settings()
-    use_case = _UseCaseSlot()
-    callback_validator = _CallbackValidatorSlot()
-    pool_slot = _PoolSlot()
-
-    mcp_app = create_streamable_http_app(
-        use_case,
-        transport_security=_transport_security(resolved.mcp_allowed_hosts),
-        host=resolved.mcp_allowed_hosts[0],
+    mcp_server = create_mcp_server(resolved.use_case)
+    mcp_app = mcp_server.streamable_http_app(
+        streamable_http_path="/mcp",
+        transport_security=TransportSecuritySettings(
+            enable_dns_rebinding_protection=True,
+            allowed_hosts=list(settings.mcp_allowed_hosts),
+            allowed_origins=[f"https://{host}" for host in settings.mcp_allowed_hosts],
+        ),
     )
 
     async def authenticate(request: Request) -> Principal:
         return parse_container_apps_principal(
-            request.headers.get(CLIENT_PRINCIPAL_HEADER),
-            resolved.authorized_agent_app_ids,
+            request.headers.get(PRINCIPAL_HEADER),
+            settings.authorized_agent_app_ids,
         )
 
     @asynccontextmanager
-    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        del app
-        cancellation = _LifespanCancellation()
+    async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+        shutdown = ShutdownSignal()
         async with AsyncExitStack() as stack:
-            runtime = await runtime_factory(resolved)
-            stack.push_async_callback(runtime.close)
-            callback_validator.bind(runtime.validate_callback_token)
-            stack.callback(callback_validator.unbind)
+            # Register client cleanup before opening the pool so a failed open leaks nothing.
+            stack.push_async_callback(_close_all, resolved.closers)
+            await resolved.pool.open()
+            stack.push_async_callback(resolved.pool.close)
+            await stack.enter_async_context(mcp_server.session_manager.run())
 
-            await runtime.pool.open()
-            stack.push_async_callback(runtime.pool.close)
-            pool_slot.bind(runtime.pool)
-            stack.callback(pool_slot.unbind)
-
-            clock = SystemClock()
-            service = AskHumanService(
-                runtime.repository,
-                runtime.gateway,
-                clock,
-                runtime.telemetry,
-                deadline_seconds=resolved.deadline_seconds,
-                work_cutoff_seconds=resolved.work_cutoff_seconds,
-                poll_interval_seconds=resolved.poll_interval_milliseconds / 1000,
-            )
-            maintenance = RequestMaintenance(
-                runtime.repository,
-                clock,
-                retention_hours=resolved.retention_hours,
-            )
-            tasks = [
-                asyncio.create_task(maintenance.run_expiry_loop(cancellation)),
-                asyncio.create_task(maintenance.run_purge_loop(cancellation)),
+            maintenance_tasks = [
+                asyncio.create_task(resolved.maintenance.run_expiry_loop(shutdown)),
+                asyncio.create_task(resolved.maintenance.run_purge_loop(shutdown)),
             ]
-            stack.push_async_callback(_stop_tasks, cancellation, tasks)
-
-            await stack.enter_async_context(mcp_app.router.lifespan_context(mcp_app))
-
-            use_case.bind(service)
-            stack.callback(use_case.unbind)
+            stack.push_async_callback(_stop_tasks, shutdown, maintenance_tasks)
             yield
 
-    application = FastAPI(title="Ask My Human", lifespan=lifespan)
-    application.include_router(create_requests_router(use_case=use_case, authenticate=authenticate))
-    application.include_router(
+    app = FastAPI(
+        title="Ask My Human",
+        docs_url=None,
+        redoc_url=None,
+        openapi_url=None,
+        lifespan=lifespan,
+    )
+    app.include_router(liveness_router)
+    app.include_router(create_readiness_router(settings, resolved.pool_state))
+    app.include_router(create_oauth_metadata_router(settings))
+    app.include_router(
+        create_requests_router(use_case=resolved.use_case, authenticate=authenticate)
+    )
+    app.include_router(
         create_callbacks_router(
-            use_case=use_case,
-            validate_token=callback_validator.validate,
+            use_case=resolved.use_case,
+            validate_token=resolved.validate_callback_token,
             parse_events=parse_callback_events,
         )
     )
-    application.include_router(liveness_router)
-    application.include_router(create_readiness_router(resolved, pool_slot))
-    application.include_router(create_oauth_metadata_router(resolved))
-    # Mount last so the MCP transport never shadows the HTTP or metadata routes.
-    application.mount(
-        "/",
-        _ClientPrincipalAuthContextMiddleware(mcp_app, resolved.authorized_agent_app_ids),
-    )
-    return application
+    # Mount last so the catch-all MCP transport never shadows an HTTP route.
+    app.mount("/", mcp_app)
+    return app
+
+
+async def _close_all(closers: Sequence[Callable[[], Awaitable[None]]]) -> None:
+    failures: list[Exception] = []
+    for close in closers:
+        try:
+            await close()
+        except Exception as failure:  # Close every remaining client before reporting.
+            failures.append(failure)
+    if failures:
+        raise ExceptionGroup("client shutdown failed", failures)
+
+
+async def _stop_tasks(shutdown: ShutdownSignal, tasks: Sequence[asyncio.Task[None]]) -> None:
+    shutdown.cancel()
+    for task in tasks:
+        task.cancel()
+    for task in tasks:
+        with suppress(asyncio.CancelledError):
+            await task
 
 
 def __getattr__(name: str) -> Any:
-    """Build the ASGI application lazily so importing the module needs no settings."""
-    if name != "app":
-        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-    application = create_app()
-    globals()["app"] = application
-    return application
+    # Build the deployed application lazily and once, so importing needs no environment
+    # and repeated access never creates a second set of clients.
+    global _cached_app
+    if name == "app":
+        if _cached_app is None:
+            _cached_app = create_app()
+        return _cached_app
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

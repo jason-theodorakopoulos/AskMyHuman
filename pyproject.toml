@@ -5,7 +5,7 @@ description = "Synchronous human-in-the-loop phone-call service for agents"
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
-  "aiohttp>=3.14,<4",
+  "aiohttp>=3.14.3,<4",
   "alembic>=1.20,<2",
   "azure-communication-callautomation>=1.6,<2",
   "azure-identity>=1.25,<2",
@@ -37,6 +37,7 @@ dev = [
   "pytest-cov>=7.1,<8",
   "ruff>=0.16,<1",
   "testcontainers[postgres]>=4.15,<5",
+  "types-jsonschema>=4.26.0.20260518",
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -66,6 +67,7 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 [tool.mypy]
 python_version = "3.12"
 strict = true
+plugins = ["pydantic.mypy"]
 files = ["src", "tests"]
 # Test folders carry no __init__.py, so mypy needs paths to disambiguate the two conftest modules.
 explicit_package_bases = true

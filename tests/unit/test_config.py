@@ -18,7 +18,7 @@ def settings(**overrides: object) -> Settings:
         "mcp_allowed_hosts": ("askmyhuman.example.com",),
     }
     values.update(overrides)
-    return Settings(**values)
+    return Settings.model_validate(values)
 
 
 def test_settings_redact_database_url() -> None:
@@ -94,7 +94,7 @@ def test_settings_parse_comma_separated_allow_lists_from_the_environment(
     for name, value in environment.items():
         monkeypatch.setenv(name, value)
 
-    configured = Settings()  # type: ignore[call-arg]
+    configured = Settings()
 
     assert configured.authorized_agent_app_ids == ("agent-a", "agent-b")
     assert configured.mcp_allowed_hosts == ("one.example.com", "two.example.com")

@@ -180,7 +180,7 @@ and never edit the Bicep composition root.
   * Owner: Compute infrastructure developer
   * Details: .copilot-tracking/details/2026-09-15/ask-my-human-tight-mvp-details.md (Lines 699-734)
 
-### [ ] Implementation Phase 2: Parallel Integration
+### [x] Implementation Phase 2: Parallel Integration
 
 <!-- parallelizable: true -->
 
@@ -190,7 +190,7 @@ workstreams pass scoped checks.
 * [x] Step 2.1: Compose one ASGI application and lifespan from validated application exports.
   * Owner: Application integrator
   * Details: .copilot-tracking/details/2026-09-15/ask-my-human-tight-mvp-details.md (Lines 743-779)
-* [ ] Step 2.2: Compose the resource-group Bicep deployment and development parameter bindings.
+* [x] Step 2.2: Compose the resource-group Bicep deployment and development parameter bindings.
   * Owner: Infrastructure integrator
   * Details: .copilot-tracking/details/2026-09-15/ask-my-human-tight-mvp-details.md (Lines 780-811)
 
@@ -214,7 +214,7 @@ workstreams pass scoped checks.
 
 * [ ] Step 4.1: Run the pre-documentation local merge gate and correct isolated defects within their owning workstreams.
   * Details: .copilot-tracking/details/2026-09-15/ask-my-human-tight-mvp-details.md (Lines 898-924)
-* [x] Step 4.2: Update README.md with only verified behavior, commands, deployment inputs, scope, and the Play-and-Recognize decision.
+* [ ] Step 4.2: Update README.md with only verified behavior, commands, deployment inputs, scope, and the Play-and-Recognize decision.
   * Details: .copilot-tracking/details/2026-09-15/ask-my-human-tight-mvp-details.md (Lines 925-952)
 * [ ] Step 4.3: Rerun the complete gate and Markdown checks against the post-documentation repository.
   * Details: .copilot-tracking/details/2026-09-15/ask-my-human-tight-mvp-details.md (Lines 953-972)

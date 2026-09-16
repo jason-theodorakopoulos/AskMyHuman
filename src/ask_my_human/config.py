@@ -24,8 +24,7 @@ class Settings(BaseSettings):
     acs_callback_audience: AnyHttpUrl
     entra_tenant_id: str
     entra_client_id: str
-    # NoDecode keeps comma-separated environment values out of the JSON decoder
-    # so deployments can pass plain lists such as "id-a,id-b".
+    # NoDecode keeps comma-separated environment values out of the JSON decoder.
     authorized_agent_app_ids: Annotated[tuple[str, ...], NoDecode]
     mcp_allowed_hosts: Annotated[tuple[str, ...], NoDecode]
     locale: str = "en-US"
