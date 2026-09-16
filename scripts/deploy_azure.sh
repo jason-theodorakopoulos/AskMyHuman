@@ -157,7 +157,8 @@ what_if() {
           [to_entries[] | select(.key == 0 or .key % 2 == 1) | .value] | join("/")),
         change: (.changeType | if IN("Create", "Delete", "Modify", "NoChange", "Ignore", "Deploy")
           then . else error("unsupported change") end),
-        property_paths: [(.delta // []) | .. | objects | .path? // empty |
+        property_paths: [(.delta // []) | .. | objects | select(has("propertyChangeType")) |
+          .path? // empty |
           select(type == "string" and test("^[A-Za-z0-9_.\\[\\]-]+$"))] | unique
       }] | sort_by(.resource_id)
     end' 2>/dev/null)" || fail 'malformed what-if metadata'
