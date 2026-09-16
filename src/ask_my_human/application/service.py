@@ -245,9 +245,10 @@ class AskHumanService:
                         current = await self._require_request(stored.request_id)
                         await self._sync_pending()
                 finally:
-                    await self._best_effort_hang_up(
-                        current.call_id or self._call_ids.get(stored.request_id)
-                    )
+                    if current.state is not RequestState.RESPONDED:
+                        await self._best_effort_hang_up(
+                            current.call_id or self._call_ids.get(stored.request_id)
+                        )
                 return self._terminal_value(current, started, replay=replay)
         except Exception:
             raise self._dependency_error(stored.request_id) from None
@@ -273,10 +274,15 @@ class AskHumanService:
                         await self._gateway.handle_playback_event(event)
                 return
             if stored.state is not RequestState.PENDING:
+                await self._cleanup_late_connection(stored, event)
                 return
             try:
                 if self._remaining(stored) <= 0:
-                    await self._expire(stored, Outcome.DEADLINE_EXCEEDED, monotonic(), replay=False)
+                    expiry_result = await self._expire(
+                        stored, Outcome.DEADLINE_EXCEEDED, monotonic(), replay=False
+                    )
+                    if stored.call_id is None and expiry_result.status is RequestStatus.EXPIRED:
+                        await self._best_effort_hang_up(event.call_id)
                     return
                 async with asyncio.timeout(self._remaining(stored)):
                     if stored.call_id is None:
@@ -287,7 +293,10 @@ class AskHumanService:
                         ):
                             return
                         stored = await self._require_request(stored.request_id)
-                    if stored.call_id != event.call_id or stored.state is not RequestState.PENDING:
+                    if stored.call_id != event.call_id:
+                        return
+                    if stored.state is not RequestState.PENDING:
+                        await self._cleanup_late_connection(stored, event)
                         return
                     if event.event_type is CallEventType.CONNECTED:
                         await self._recognize(stored)
@@ -334,6 +343,13 @@ class AskHumanService:
                 await self._expire(stored, Outcome.DEADLINE_EXCEEDED, monotonic(), replay=False)
             except Exception:
                 await self._fail(stored, TelemetryOperation.CALLBACK, event.acs_code)
+
+    async def _cleanup_late_connection(self, stored: HumanRequest, event: CallEvent) -> None:
+        if event.event_type is CallEventType.CONNECTED and stored.state in {
+            RequestState.EXPIRED,
+            RequestState.FAILED,
+        }:
+            await self._best_effort_hang_up(event.call_id)
 
     async def _recognize(self, stored: HumanRequest) -> None:
         active = self._active.get(stored.request_id)

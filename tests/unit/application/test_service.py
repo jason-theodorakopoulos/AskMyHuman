@@ -499,7 +499,7 @@ async def test_recognition_failure_is_not_retried() -> None:
     await service.handle_call_event(event)
     assert len(gateway.recognitions) == 1
     assert repository.requests[stored.request_id].state is RequestState.FAILED
-    assert gateway.hung_up == ["call-id"]
+    assert gateway.hung_up == ["call-id", "call-id"]
 
 
 async def test_stalled_recognition_callback_is_bounded_and_expires() -> None:
