@@ -80,7 +80,7 @@ def _parse_callback_events(payload: object) -> list[CallEvent]:
 
 
 async def _cancel_maintenance(
-    signal: "_LoopCancellationSignal", tasks: list[asyncio.Task[None]]
+    signal: _LoopCancellationSignal, tasks: list[asyncio.Task[None]]
 ) -> None:
     signal.cancel()
     for task in tasks:
