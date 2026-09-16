@@ -269,6 +269,37 @@ def test_what_if_is_reviewable_but_does_not_disclose_values(deployment: Deployme
 
 
 @pytest.mark.parametrize(
+    "configured,expected",
+    [(None, "120"), ("", "120"), ("1", "1"), ("3600", "3600")],
+)
+def test_azure_command_timeout_accepts_defaults_and_bounds(
+    deployment: Deployment,
+    configured: str | None,
+    expected: str,
+) -> None:
+    if configured is not None:
+        deployment.env["AZURE_COMMAND_TIMEOUT_SECONDS"] = configured
+    deployment.review()
+    calls = deployment.calls("timeout")
+    assert len(calls) == 1
+    assert calls[0]["args"][:2] == ["--kill-after=5", expected]
+
+
+@pytest.mark.parametrize("value", ["0", "-1", "01", "3601", "10000", "1+1", " 1", "invalid"])
+def test_invalid_azure_command_timeout_blocks_execution(
+    deployment: Deployment,
+    value: str,
+) -> None:
+    deployment.env["AZURE_COMMAND_TIMEOUT_SECONDS"] = value
+    result = deployment.run("what-if")
+    assert result.returncode != 0
+    assert "invalid Azure command timeout" in result.stderr
+    assert result.stdout == ""
+    assert deployment.calls("timeout") == []
+    assert deployment.calls("az") == []
+
+
+@pytest.mark.parametrize(
     "metadata",
     [
         {},
