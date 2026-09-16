@@ -1,3 +1,5 @@
+import os
+import re
 from logging.config import fileConfig
 
 from alembic import context
@@ -7,6 +9,11 @@ config = context.config
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
+
+_database_url = os.environ.get("DATABASE_URL")
+if _database_url:
+    _database_url = re.sub(r"^postgres(ql)?://", "postgresql+psycopg://", _database_url, count=1)
+    config.set_main_option("sqlalchemy.url", _database_url)
 
 target_metadata = None
 

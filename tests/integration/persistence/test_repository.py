@@ -1,6 +1,6 @@
 import asyncio
 from datetime import UTC, datetime, timedelta
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from support.fakes import (
@@ -26,7 +26,7 @@ from ask_my_human.persistence.repository import PostgresRequestRepository
 HASH = "a" * 64
 
 
-def request(*, prompt: str = "Deploy?", idempotency_key=None) -> AskHumanRequest:
+def request(*, prompt: str = "Deploy?", idempotency_key: UUID | None = None) -> AskHumanRequest:
     return AskHumanRequest(
         kind=RequestKind.APPROVAL,
         prompt=prompt,

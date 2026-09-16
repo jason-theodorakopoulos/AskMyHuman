@@ -18,7 +18,7 @@ def settings(**overrides: object) -> Settings:
         "mcp_allowed_hosts": ("askmyhuman.example.com",),
     }
     values.update(overrides)
-    return Settings(**values)
+    return Settings.model_validate(values)
 
 
 def test_settings_redact_database_url() -> None:

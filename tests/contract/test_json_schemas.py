@@ -1,4 +1,5 @@
 import json
+from collections.abc import Mapping
 from pathlib import Path
 from uuid import uuid4
 
@@ -16,7 +17,7 @@ from ask_my_human.contracts import (
 SCHEMAS = Path(__file__).resolve().parents[2] / "schemas"
 
 
-def validate(filename: str, instance: dict[str, object]) -> None:
+def validate(filename: str, instance: Mapping[str, object]) -> None:
     jsonschema.Draft202012Validator(json.loads((SCHEMAS / filename).read_text())).validate(instance)
 
 
@@ -59,8 +60,10 @@ def test_request_schema_validates_normalized_approval() -> None:
         ),
     ],
 )
-def test_terminal_contracts_validate(result: object, filename: str) -> None:
-    validate(filename, result.model_dump(by_alias=True, mode="json"))  # type: ignore[union-attr]
+def test_terminal_contracts_validate(
+    result: AskHumanResult | ExecutionError, filename: str
+) -> None:
+    validate(filename, result.model_dump(by_alias=True, mode="json"))
 
 
 def test_invalid_result_combination_is_rejected() -> None:
@@ -111,4 +114,4 @@ def test_request_model_and_schema_reject_same_overlong_wire_prompt() -> None:
 
 def test_unknown_request_field_is_rejected() -> None:
     with pytest.raises(ValueError):
-        AskHumanRequest(kind="input", prompt="Need context", idempotencyKey=uuid4(), extra=True)
+        AskHumanRequest(kind="input", prompt="Need context", idempotencyKey=uuid4(), extra=True)  # type: ignore[call-arg]
