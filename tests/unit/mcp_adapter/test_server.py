@@ -12,6 +12,7 @@ from mcp.server.auth.provider import AccessToken
 from mcp.server.context import ServerRequestContext
 from mcp.shared.exceptions import MCPError
 from mcp.types import INVALID_PARAMS, CallToolRequestParams, TextContent
+from starlette.routing import Route
 
 from ask_my_human.application.ports import CancellationSignal
 from ask_my_human.contracts import AskHumanRequest, AskHumanResult, Outcome, RequestStatus
@@ -93,7 +94,7 @@ def test_tool_uses_checked_in_request_and_result_schemas() -> None:
 def test_app_factory_exposes_only_streamable_http_mcp_route() -> None:
     app = create_streamable_http_app(RecordingUseCase())
 
-    assert [route.path for route in app.routes] == ["/mcp"]  # type: ignore[attr-defined]
+    assert [cast(Route, route).path for route in app.routes] == ["/mcp"]
 
 
 @pytest.mark.asyncio
@@ -190,7 +191,9 @@ async def test_unexpected_failure_is_sanitized(authenticated_agent: None) -> Non
     assert response.is_error is True
     assert response.structured_content["code"] == "internal"
     assert response.structured_content["message"] == "The human request could not be completed."
-    assert "password" not in cast(TextContent, response.content[0]).text
+    content = response.content[0]
+    assert isinstance(content, TextContent)
+    assert "password" not in content.text
 
 
 @pytest.mark.asyncio

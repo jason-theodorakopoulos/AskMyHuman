@@ -121,6 +121,4 @@ def test_request_model_and_schema_reject_same_overlong_wire_prompt() -> None:
 
 def test_unknown_request_field_is_rejected() -> None:
     with pytest.raises(ValueError):
-        AskHumanRequest(
-            kind=RequestKind.INPUT, prompt="Need context", idempotencyKey=uuid4(), extra=True
-        )  # type: ignore[call-arg]
+        AskHumanRequest(kind="input", prompt="Need context", idempotencyKey=uuid4(), extra=True)  # type: ignore[call-arg]

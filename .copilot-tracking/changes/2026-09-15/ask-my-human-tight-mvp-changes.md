@@ -6,7 +6,7 @@
 * Date: 2026-09-15
 * Related plan: `.copilot-tracking/plans/2026-09-15/ask-my-human-tight-mvp-plan.instructions.md`
 * Implementation commit: `9322aa6` (merge of Phase 0 implementation)
-* Scope implemented: Implementation Phases 0, 1A, and 1B
+* Scope implemented: Implementation Phases 0, 1A, 1B, and 2
 
 ## Phase 0 Changes
 
@@ -152,12 +152,44 @@ Publication status:
 * All seven Phase 1B Bicep and support modules compiled with Bicep CLI 0.47.16 with zero warnings and zero errors.
 * Workspace diagnostics and `git diff --check` passed.
 
+## Phase 2 Changes
+
+### Step 2.1: ASGI Application Composition
+
+* Added `src/ask_my_human/main.py` as the sole composition root for settings, telemetry, Azure credentials, the ACS client, the PostgreSQL pool, the repository, the service, maintenance loops, HTTP routers, and the MCP transport.
+* Added one FastAPI lifespan that registers client cleanup, opens and waits for PostgreSQL, enters the MCP session manager, starts the expiry and purge loops, and closes every resource on shutdown even when one client fails.
+* Registered liveness, readiness, OAuth metadata, request, and callback routes before mounting the MCP application at `/` so `/mcp` never shadows `/v1` or metadata routes.
+* Added `tests/integration/test_asgi_app.py` covering readiness before and during the lifespan, liveness, OAuth metadata, authenticated and unauthenticated request handling, callback token validation and event dispatch, the mounted MCP initialize handshake, maintenance loop startup and shutdown, and callback payload parsing.
+* Modified `src/ask_my_human/config.py` so comma-separated list settings bypass the pydantic-settings JSON decoder.
+* Modified `pyproject.toml` and `uv.lock` to add the `aiohttp` runtime dependency required by the asynchronous Azure SDK transport.
+
+### Step 2.2: Bicep Deployment Composition
+
+* Verified the existing `infra/main.bicep` composition and `infra/environments/dev.bicepparam` bindings build with the Bicep CLI and expose no secure value as an output.
+
+## Phase 2 Validation
+
+* `uv run pytest` passed with 158 tests, including the new ASGI composition suite.
+* `uv run mypy src/ask_my_human/main.py tests/integration/test_asgi_app.py` reported no errors for the new files.
+* `uv run ruff format --check .` and `uv run ruff check .` passed.
+* `uv lock --check` and `uv run python scripts/export_schemas.py --check` passed.
+* `az bicep build --file infra/main.bicep` and `az bicep build-params --file infra/environments/dev.bicepparam` succeeded.
+* The deployed composition was smoke-checked by importing `ask_my_human.main:app` with the documented environment variables.
+
 ## Additional Or Deviating Changes
 
 * Extended internal domain and repository contracts for durable technical-error replay after process replacement.
   * Public request, result, and execution-error wire schemas remain unchanged.
 * Added two nested role-assignment support modules.
   * Bicep requires a nested deployment when assigning roles to existing ACS and ACR resources in another resource group or subscription.
+* Added `aiohttp` as a runtime dependency during Phase 2 integration.
+  * The asynchronous Azure Identity and Call Automation clients require the aiohttp transport, and `azure-core` 1.41 ships no httpx-based asynchronous transport.
+  * The manifest change was made once and `uv.lock` was regenerated rather than hand-merged.
+* Annotated the comma-separated settings with `NoDecode` in `src/ask_my_human/config.py`.
+  * pydantic-settings otherwise JSON-decodes sequence fields before the existing validator runs, so the deployed comma-separated environment values failed to load.
+  * The public setting names, types, and validation rules are unchanged.
+* Exposed the deployed `app` object through a module-level `__getattr__` in `src/ask_my_human/main.py`.
+  * This keeps the `ask_my_human.main:app` Uvicorn import string from the container image while letting tests import the module without a configured environment.
 * Replaced private VNet integration with public service endpoints for the tight MVP.
   * Removed `infra/modules/network.bicep`, subnet inputs, and private DNS inputs.
   * PostgreSQL permits Azure-hosted clients through the documented `0.0.0.0` Azure-services rule, not an unrestricted internet address range.
@@ -165,38 +197,23 @@ Publication status:
 
 ## Release Summary
 
-Phase 1A delivers all independently testable application implementations for persistence, orchestration, telephony, security, HTTP, health, OAuth metadata, MCP, and observability. Phase 1B delivers all independently compilable public-endpoint Azure infrastructure modules. Phase 2 composition remains intentionally unimplemented.
+### Step 2.1 Note: Composition Root Merge
 
-## Phase 2 Changes (Step 2.1 Completion)
-
-Step 2.1, the sole ASGI application composition root, was found unimplemented
-despite `Dockerfile`, `compose.yaml`, and CI already referencing
-`ask_my_human.main:app`. This gap blocked the Phase 4 local merge gate and is
-closed by this change.
-
-* Added `src/ask_my_human/main.py` as the sole composition root: builds
-  `Settings`, configures observability, opens the PostgreSQL pool and ACS
-  client, constructs the service and maintenance loops, registers every HTTP
-  router, and mounts the MCP Streamable HTTP app at `/` last, entering
-  `mcp_server.session_manager.run()` around the host lifespan so the mounted
-  sub-application's session manager runs under the parent app's lifespan.
-* Added `tests/integration/test_asgi_app.py`, exercising the fully composed
-  application through `fastapi.testclient.TestClient` against a real
-  PostgreSQL testcontainer: liveness, readiness, OAuth metadata,
-  unauthenticated-request rejection, missing-callback-token rejection, and
-  that the MCP mount does not shadow HTTP routes.
-* Added `aiohttp>=3.14.3,<4` to main dependencies. `azure-identity`'s async
-  `DefaultAzureCredential` raises `ImportError: aiohttp package is not
-  installed` at construction time without it; version pinned above the range
-  flagged by the GitHub Advisory Database for a chunked-response parsing
-  vulnerability.
-* Added `types-jsonschema>=4.26,<5` to dev dependencies for mypy stubs.
+Step 2.1 (the ASGI composition root) was independently implemented on a
+parallel branch (`copilot/implement-asgi-application-bicep`) and merged into
+`main` before this branch's Phase 4 gate ran. That implementation was adopted
+here in place of this branch's own draft, including its
+`AsyncExitStack`-based lifespan, `ApplicationComponents` composition, and
+`tests/integration/test_asgi_app.py` fake/spy-based coverage (no Docker
+dependency). This branch's `aiohttp>=3.14.3,<4` pin (above a GitHub Advisory
+Database chunked-response-parsing vulnerability) was kept over the
+independent branch's looser `aiohttp>=3.14,<4`.
 
 ### Isolated Defects Fixed During Composition And Gate Execution
 
-These were pre-existing defects discovered while composing and validating the
-application, not introduced by Step 2.1 itself. Each is isolated to its owning
-module and does not change any frozen public contract:
+Both the independent composition branch and this branch's original draft
+discovered and fixed the same pre-existing defects, confirming they were
+real:
 
 * `src/ask_my_human/config.py` — `authorized_agent_app_ids` and
   `mcp_allowed_hosts` are `tuple[str, ...]` fields with a `split_csv` before
@@ -220,9 +237,9 @@ module and does not change any frozen public contract:
   (`postgresql+psycopg://localhost/ask_my_human`), so `alembic upgrade head`
   in the container entrypoint silently ignored the configured database and
   failed to connect in `docker compose up`. `env.py` now overrides
-  `sqlalchemy.url` from `DATABASE_URL` when present, normalizing the
-  `postgresql://` scheme to `postgresql+psycopg://` for SQLAlchemy's dialect
-  loader.
+  `sqlalchemy.url` from `DATABASE_URL` when present, normalizing both the
+  `postgresql://` and legacy `postgres://` schemes to `postgresql+psycopg://`
+  for SQLAlchemy's dialect loader.
 * 36 pre-existing `mypy --strict` errors across eight unit/contract/integration
   test files (untyped generator fixtures, loosely typed `Settings(**dict)`
   construction, string literals used where enum members are required,
@@ -262,14 +279,19 @@ All commands passed against the fixes above:
 
 ### Step 4.3: Post-Documentation Revalidation
 
-The complete local merge gate (Step 4.1 command list) was rerun after the
-README update and passed unchanged. No repository Markdown linter is
-configured; `git diff --check` on `README.md` reported no whitespace errors.
+The complete local merge gate (Step 4.1 command list) was rerun after merging
+`main`'s composition root and README update, and passed unchanged. No
+repository Markdown linter is configured; `git diff --check` on `README.md`
+reported no whitespace errors.
 
 ## Updated Release Summary
 
-Phases 0, 1A, 1B, 2, 3, and 4 are complete for the tight MVP. Phase 5 (Azure
-deployment and live validation) remains gated on tenant-specific inputs
-(existing ACS resource, Entra tenant/application registrations, target
-subscription/region/registry, and retention approval) recorded as DR-01
-through DR-05 in the planning log, and is not attempted by this change.
+Phases 0, 1A, 1B, 2, 3, and 4 are complete for the tight MVP. Phase 2
+(the ASGI composition root and its Bicep deployment) and Phase 3 (container
+image and CI) were delivered on independent branches merged into `main`;
+Phase 4 (local validation gate and documentation) is delivered by this
+branch. Phase 5 (Azure deployment and live validation) remains gated on
+tenant-specific inputs (existing ACS resource, Entra tenant/application
+registrations, target subscription/region/registry, and retention approval)
+recorded as DR-01 through DR-05 in the planning log, and is not attempted by
+this change.

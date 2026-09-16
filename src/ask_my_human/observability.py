@@ -200,21 +200,21 @@ class AzureMonitorTelemetry:
 def configure_observability(*, connection_string: str | None = None) -> AzureMonitorTelemetry:
     """Configure Azure Monitor before the ASGI application begins serving.
 
-    Skips exporter configuration when no connection string is supplied or set
-    in ``APPLICATIONINSIGHTS_CONNECTION_STRING`` so local and test environments
-    without an Application Insights resource still start successfully.
+    Local development and CI image validation run without an Application
+    Insights resource. Skip Azure Monitor wiring when no connection string is
+    supplied or configured through the environment so the process still starts
+    and records telemetry against the default in-process providers only.
     """
     resolved_connection_string = connection_string or os.environ.get(
         "APPLICATIONINSIGHTS_CONNECTION_STRING"
     )
     if resolved_connection_string:
-        options: dict[str, object] = {
-            "instrumentation_options": {
+        configure_azure_monitor(
+            connection_string=resolved_connection_string,
+            instrumentation_options={
                 "fastapi": {"enabled": True},
                 "psycopg2": {"enabled": False},
             },
-            "resource": Resource.create({"service.name": "ask-my-human"}),
-            "connection_string": resolved_connection_string,
-        }
-        configure_azure_monitor(**options)
+            resource=Resource.create({"service.name": "ask-my-human"}),
+        )
     return AzureMonitorTelemetry()

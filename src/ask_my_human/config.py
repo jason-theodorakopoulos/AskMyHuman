@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     acs_callback_audience: AnyHttpUrl
     entra_tenant_id: str
     entra_client_id: str
+    # NoDecode keeps comma-separated environment values out of the JSON decoder.
     authorized_agent_app_ids: Annotated[tuple[str, ...], NoDecode]
     mcp_allowed_hosts: Annotated[tuple[str, ...], NoDecode]
     locale: str = "en-US"
@@ -57,19 +58,3 @@ class Settings(BaseSettings):
         if not self.mcp_allowed_hosts:
             raise ValueError("mcp_allowed_hosts must not be empty")
         return self
-
-    @classmethod
-    def from_env(cls) -> "Settings":
-        """Build settings from the process environment and ``.env`` file.
-
-        Every field is required on the model so callers can rely on complete,
-        validated configuration, but pydantic-settings resolves each value
-        from the environment rather than from constructor arguments, so mypy
-        cannot see that the zero-argument call is satisfied. There is no
-        mypy-visible way to express "populated by ``BaseSettings`` sources"
-        on a per-field basis without a custom mypy plugin, which is out of
-        scope for this MVP; this factory keeps the one unavoidable
-        ``type: ignore[call-arg]`` in a single, well-documented place instead
-        of repeating it at every call site.
-        """
-        return cls()  # type: ignore[call-arg]

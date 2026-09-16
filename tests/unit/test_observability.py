@@ -121,9 +121,11 @@ def test_all_approved_spans_share_a_random_request_correlation_id(
     assert isinstance(first_request_id, UUID)
     assert first_request_id != second_request_id
     assert {span.name for span in exporter.spans} == {span.value for span in SpanName}
-    assert {(span.attributes or {})["request_id"] for span in exporter.spans} == {
-        str(first_request_id)
-    }
+    request_ids = set[object]()
+    for span in exporter.spans:
+        assert span.attributes is not None
+        request_ids.add(span.attributes["request_id"])
+    assert request_ids == {str(first_request_id)}
 
 
 def test_dependency_failure_and_pending_gauge_use_only_approved_dimensions(
