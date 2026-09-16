@@ -144,6 +144,15 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.settings = settings
         app.state.pool = pool
 
+        # `_lifespan` runs once per real process, but a shared `app` instance may be
+        # entered more than once across sequential test-client lifespans; reset any
+        # routes registered by a previous run so they are not duplicated.
+        base_route_count = getattr(app.state, "_base_route_count", None)
+        if base_route_count is None:
+            app.state._base_route_count = len(app.router.routes)
+        else:
+            del app.router.routes[base_route_count:]
+
         app.include_router(liveness_router)
         app.include_router(create_readiness_router(settings, pool.pool))
         app.include_router(create_oauth_metadata_router(settings))

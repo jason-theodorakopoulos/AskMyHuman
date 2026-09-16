@@ -107,3 +107,12 @@ def test_mcp_route_is_mounted_and_not_shadowed_by_v1_routes(client: TestClient) 
     )
 
     assert response.status_code != 404
+
+
+def test_repeated_lifespan_entry_does_not_duplicate_routes(client: TestClient) -> None:
+    route_count_before = len(app.router.routes)
+
+    with TestClient(app):
+        pass
+
+    assert len(app.router.routes) == route_count_before
