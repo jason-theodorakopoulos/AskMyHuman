@@ -12,6 +12,9 @@ param existingAcsResourceId string
 @description('Principal ID of the Container App user-assigned managed identity.')
 param containerIdentityPrincipalId string
 
+@description('Resource ID of the Container App user-assigned managed identity.')
+param containerIdentityResourceId string
+
 var acsResourceIdSegments = split(existingAcsResourceId, '/')
 var acsSubscriptionId = acsResourceIdSegments[2]
 var acsResourceGroupName = acsResourceIdSegments[4]
@@ -43,6 +46,7 @@ module containerAcsDataOwner 'communications-acs-role-assignment.bicep' = {
   params: {
     acsResourceName: acsResourceName
     containerIdentityPrincipalId: containerIdentityPrincipalId
+    containerIdentityResourceId: containerIdentityResourceId
   }
 }
 

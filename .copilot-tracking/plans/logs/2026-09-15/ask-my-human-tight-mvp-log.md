@@ -59,6 +59,14 @@ implementation plan.
   * Implementation differs: The network module is removed, PostgreSQL enables public network access with TLS and an Azure-services firewall rule, and Container Apps uses its default public environment network.
   * Rationale: The user selected public connectivity on 2026-09-15 to reduce MVP infrastructure and deployment complexity. Application authentication, callback JWT validation, managed identity, TLS, and secret handling remain enforced.
 
+### Approved Review Decision: 2026-09-16
+
+* DD-06: Phase 4 command evidence covers local validation, not prior execution of deployment or paid live procedures.
+  * Previous criterion: Step 4.2 required every documented command to have run, while Step 5.1 required Phase 4 before deployment.
+  * User approval: "Approve the phase-order correction" on 2026-09-16.
+  * Resolution: Verify documented local commands in Phase 4 and label Azure and live procedures as externally gated. Deployment and paid live evidence remain mandatory in Phases 5 and 6 before release acceptance.
+  * Scope: No deployment, publication, paid call, retention-policy approval, or DR-01 through DR-05 waiver is authorized by this decision.
+
 ## Implementation Paths Considered
 
 ### Selected: Contract-First Single Service With Parallel Adapters

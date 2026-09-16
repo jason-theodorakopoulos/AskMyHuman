@@ -259,8 +259,8 @@ git diff --check -- README.md .copilot-tracking/changes/2026-09-15/ask-my-human-
 ```
 
 Record the reviewed revision, actual command results, and each blocker owner
-and next action in the review log. Review repairs are ongoing; the commands
-above are requirements, not a claim that the final gate passed. The non-live
+and next action in the review log. The commands above remain required for each
+release; see the dated review log for actual results. The non-live
 suite now builds and starts the application image against disposable PostgreSQL,
 checks migration-before-Uvicorn startup with an encoded password, exercises
 liveness/readiness and authentication rejection, and checks query-log redaction.
@@ -268,11 +268,10 @@ It uses synthetic settings without mounting the workspace environment file.
 Run that bounded test again for the final state; it does not verify Azure ingress.
 
 Local validation is separate from the externally gated Azure and paid-call
-procedures below. Step 4.2 literally requires every documented command to have
-run successfully, while deployment depends on Phase 4. That ordering remains
-unresolved: keep Phase 4 partial until the plan/release owners approve a
-reconciliation or the literal criterion is satisfied. This guide does not
-change plan criteria or count documented procedures as executed evidence.
+procedures below. Under user-approved decision DD-06 (2026-09-16), Phase 4
+command evidence covers local validation. Deployment and live procedures remain
+mandatory Phase 5 and 6 acceptance gates; documenting them does not count as
+executing them.
 
 ## Azure Prerequisites And Deployment
 
@@ -294,11 +293,12 @@ repository:
   audience, with consistent settings and deployment bindings.
 
 [scripts/deploy_azure.sh](scripts/deploy_azure.sh) provides deployment assistance,
-not completion of all release gates. Inspect its current usage and required
-inputs before execution; review repairs to its default action, explicit
-approvals, digest/revision verification, and authenticated health checks are
-ongoing. Do not invoke it without an explicit reviewed action or assume that
-successful script execution constitutes operator approval.
+not completion of all release gates. Its default action is help. Use `what-if`
+for a sanitized review, obtain a bound external approval, then explicitly
+`publish`. Review the resulting digest with `what-if` and obtain a new approval
+before `deploy`. `verify` requires release approval and authenticated health
+checks. `rollback` requires a previously approved digest and new mutation
+approval; it never rebuilds. Successful script execution is not operator approval.
 
 Supply deployment inputs privately through environment variables, never as
 committed parameter literals. Reconcile the current helper's requirements with:
@@ -314,7 +314,7 @@ verification needs only a resource-group name.
 
 ### Operator Release Gates
 
-1. Resolve DR-01 through DR-05 and the Phase 4 ordering decision. Obtain explicit
+1. Resolve DR-01 through DR-05. Obtain explicit
   approval for Azure mutations, retention, and separately for paid calls.
 2. Inspect the complete what-if change list for the intended one-app
   architecture. A successful exit code is not evidence of a reviewed diff.
@@ -362,10 +362,15 @@ RUN_LIVE_AZURE_TESTS=1 uv run pytest -m live tests/e2e/test_live_call.py -vv
 
 They additionally require `LIVE_BASE_URL`, `LIVE_API_SCOPE`,
 `LIVE_AGENT_TENANT_ID`, `LIVE_AGENT_CLIENT_ID`, `LIVE_AGENT_CLIENT_SECRET`,
-`DATABASE_URL`, and `LIVE_LOG_ANALYTICS_WORKSPACE_ID`. Each test docstring says
-whether to answer the phone or let it ring.
+and `DATABASE_URL`. `LIVE_APPROVAL_JSON` supplies approved scenarios, isolated
+database binding, retention, provider-evidence and telemetry inputs;
+`LIVE_DEPLOYMENT_EVIDENCE_JSON` consumes the helper's successful `verify` output.
+These JSON values are validated against the evidence models in
+[tests/e2e/test_live_call.py](tests/e2e/test_live_call.py). Missing, stale, or
+mismatched evidence blocks calls. Each test docstring specifies the scenario
+setup; privacy checks also require the configured sensitive sentinel inputs.
 
-The harness is partial and under review. Release evidence must distinguish
+The harness is implemented but live acceptance has not been executed. Release evidence must distinguish
 approval, rejection, a nonblank spoken answer, initial silence, no answer,
 carrier-exposed busy/decline, disconnect, initiating-client cancellation,
 forced deadline, join/replay, and authenticated duplicate callbacks. HTTP
@@ -378,7 +383,7 @@ prompts, answers, phone numbers, idempotency keys, tokens, and callback bodies.
 Ensure required query dependencies are available and allow bounded telemetry
 ingestion time; skipped evidence is not a passing gate. Record carrier limits
 as explicitly approved external limitations, not successful scenarios. Final
-checks and remaining blockers belong in the review log after repairs finish.
+checks and remaining blockers belong in the review log.
 
 Azure resources use public service endpoints (no VNet) protected by TLS,
 managed identity, and application-level authentication; see decision DD-05 in

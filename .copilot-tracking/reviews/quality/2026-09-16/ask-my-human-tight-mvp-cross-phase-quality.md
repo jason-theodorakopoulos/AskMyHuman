@@ -4,9 +4,9 @@
 ## Metadata And Result
 
 * Date: 2026-09-16
-* Overall status: Needs Rework
-* Remaining findings: 1 critical, 4 major, 0 minor
-* Discovered follow-up items: 5
+* Original audit status: Needs Rework; all five findings corrected in the parent follow-up below
+* Remaining local findings after correction: 0 critical, 0 major, 0 minor
+* Original discovered follow-up items: 5, all resolved locally
 * Scope: Independent read-only source audit of coordinated lifecycle, persistence,
   callback, telemetry, deployment, and live-harness repairs
 * Implementation changes: None; only this review artifact was created
@@ -216,6 +216,27 @@ is not counted as a code defect.
 The parent retains ownership of combined final-state validation and existing
 release approvals. This pass adds no request for paid external checks and does
 not reclassify already documented external gates as implementation findings.
-Preserve existing planning and implementation edits while addressing the five
-items above. Overall status remains Needs Rework until the source defects and
-their bounded regressions are resolved.
+Preserve existing planning and implementation edits. The original findings above
+remain a pre-fix evidence snapshot; the following parent resolution supersedes
+their open status.
+
+## Parent Resolution: 2026-09-16
+
+* C1 and M1: Added cancellation/deadline late-connection and losing-expiry tests.
+   All three first failed, then passed after bounded cleanup-only terminal handling
+   and preservation of the winning response's acknowledgement. The full service
+   suite passed all 43 tests.
+* M2: Preflight now requires HTTP 400 with `invalid_request`, verified against
+   the actual in-process HTTP adapter rather than an invented 422 stub.
+* M3: Canonical model comparisons accept omitted or explicit null answers across
+   HTTP/MCP while rejecting extras, malformed values and mismatched stored results.
+* M4: The harness consumes actual deployment-verifier JSON and validates source,
+   image, revision and authentication proof, with separate approved database
+   binding. No paid-call authorization is inferred from deployment verification.
+* Harness corrections passed 145 offline regressions, including the real HTTP
+   adapter and stubbed deployment-script producer. Ruff, formatting and strict
+   mypy passed. The parent combined suite passed 429 tests with 91.28% coverage;
+   live tests remain skipped without explicit consent.
+
+Authoritative final status and post-documentation evidence are recorded in
+[the consolidated review](../../2026-09-16/ask-my-human-tight-mvp-plan-review.md).

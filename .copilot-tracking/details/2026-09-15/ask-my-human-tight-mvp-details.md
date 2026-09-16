@@ -940,7 +940,7 @@ Discrepancy references:
 
 Success criteria:
 
-* Every documented command was run successfully.
+* Every documented local validation command was run successfully. Under DD-06, approved by the user on 2026-09-16, deployment and paid live procedures are explicitly labeled as externally gated and remain mandatory acceptance evidence in Phases 5 and 6.
 * The README uses the selected canonical product name consistently.
 * No secret value or tenant-specific identifier is documented.
 

@@ -8,7 +8,7 @@ description: Implementation history, review corrections, and outstanding release
 * Date: 2026-09-15
 * Related plan: `.copilot-tracking/plans/2026-09-15/ask-my-human-tight-mvp-plan.instructions.md`
 * Implementation commit: `9322aa6` (merge of Phase 0 implementation)
-* Scope implemented: Implementation Phases 0, 1A, and 1B
+* Historical scope: Implementation Phases 0, 1A, and 1B; current integration and release implementation is inventoried below.
 
 ## Phase 0 Changes
 
@@ -188,7 +188,7 @@ checks will be recorded in the review log against the final repository state.
 * `src/ask_my_human/main.py` contains ASGI composition, dependency lifecycle,
   maintenance tasks, HTTP routes, and mounted MCP transport.
 * `tests/integration/test_asgi_app.py` provides composition coverage using
-  fakes and spies; it is not an application-container startup test.
+  fakes and spies plus a real application-container migration/startup smoke.
 * `infra/main.bicep` and `infra/environments/dev.bicepparam` compose the Azure
   modules and environment bindings. Their presence is not deployed evidence.
 * Integration support includes comma-separated settings decoding, async Azure
@@ -225,9 +225,9 @@ checks will be recorded in the review log against the final repository state.
   implementation owners; this entry does not assert their validation passed.
 * Documented the post-edit complete local gate plus editor diagnostics and
   `git diff --check` Markdown fallback without adding a Markdown toolchain.
-* Step 4.2's literal every-command-success criterion conflicts with deployment
-  depending on Phase 4. Plan/release owners must approve reconciliation, or
-  Phase 4 remains partial. No plan criteria were changed by this repair.
+* The user approved DD-06 on 2026-09-16: Step 4.2 command evidence covers local
+  validation; deployment and paid live acceptance remain mandatory in Phases 5
+  and 6. The plan, detailed criterion, and README now reflect that decision.
 
 ### Phase 5 Deployment And Live Gates Partial
 
@@ -266,5 +266,35 @@ checks will be recorded in the review log against the final repository state.
 * Finalized findings: `.copilot-tracking/reviews/rpi/2026-09-16/ask-my-human-tight-mvp-plan-005-validation.md`
 * Required gates: `.copilot-tracking/details/2026-09-15/ask-my-human-tight-mvp-details.md`, Steps 4.1 through 6.3
 * Contract evidence: `.copilot-tracking/research/2026-09-15/tight-mvp-scope-research.md`, State, Deadline, and Idempotency
-* Operator decision required: reconcile Step 4.2 command evidence with Phase 5
-  prerequisites without silently narrowing the literal acceptance criterion.
+* Operator decision resolved: DD-06 explicitly reconciles Step 4.2 command
+  evidence with Phase 5 prerequisites without waiving any release gate.
+
+## Final Local Review Corrections: 2026-09-16
+
+This section supersedes the earlier in-progress inventory statements, not the
+historical implementation results or user-owned release-resumption record.
+
+* Corrected deadline/cancellation bounds, late callback cleanup, first-terminal
+  acknowledgement ownership, correlated connected-only recognition, technical
+  callback failures, and database expiry predicates.
+* Added additive migration `20260916_0002_recognition_guard.py` for durable
+  once-only recognition; apply it before using the updated repository.
+* Unified HTTP/MCP authorization, separated callback endpoint and immutable
+  audience settings, bounded discovery, and removed sensitive exception/access
+  logging while instrumenting actual operations and pending state.
+* Repaired maintenance recovery, stale-call cleanup, startup cancellation,
+  task drainage, readiness, and acknowledgement completion handling.
+* Added explicit Application Insights table retention, pinned image digest,
+  loopback Compose bindings, approval-bound immutable deployments, authenticated
+  bounded health checks, rollback safeguards, and a no-call CI image smoke.
+* Expanded the fail-closed live harness, mandatory telemetry evidence and
+  independent provider attestations; verified the actual HTTP and deployment
+  evidence contracts with offline regressions. No live acceptance was executed.
+* Corrected documentation and environment examples while preserving preexisting
+  user changes. No commit, publication, deployment, or paid call was performed
+  by this review continuation.
+* Final pre-documentation-closeout gate: 429 non-live tests passed with 91.28%
+  branch-inclusive coverage; 20 live tests skipped without opt-in. Formatting,
+  Ruff, strict mypy, lock/frozen sync, schema drift, Compose, image runtime smoke,
+  shell checks, and all Bicep templates/parameters passed. The final review log
+  records the required post-documentation rerun and any remaining external gates.

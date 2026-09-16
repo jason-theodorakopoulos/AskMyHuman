@@ -90,6 +90,7 @@ module registryPullRoleAssignment 'container-app-acr-role-assignment.bicep' = {
   params: {
     containerRegistryName: registryName
     principalId: containerIdentity.properties.principalId
+    principalResourceId: identityResourceId
   }
 }
 

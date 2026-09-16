@@ -77,6 +77,7 @@ module communications 'modules/communications.bicep' = {
 		resourceNamePrefix: resourceNamePrefix
 		existingAcsResourceId: existingAcsResourceId
 		containerIdentityPrincipalId: identity.outputs.principalId
+		containerIdentityResourceId: identity.outputs.identityResourceId
 	}
 }
 

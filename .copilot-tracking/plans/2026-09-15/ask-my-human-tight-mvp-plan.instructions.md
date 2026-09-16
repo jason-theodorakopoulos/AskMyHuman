@@ -216,6 +216,7 @@ workstreams pass scoped checks.
   * Details: .copilot-tracking/details/2026-09-15/ask-my-human-tight-mvp-details.md (Lines 898-924)
 * [ ] Step 4.2: Update README.md with only verified behavior, commands, deployment inputs, scope, and the Play-and-Recognize decision.
   * Details: .copilot-tracking/details/2026-09-15/ask-my-human-tight-mvp-details.md (Lines 925-952)
+  * Approved 2026-09-16 (DD-06): Phase 4 command evidence covers local validation; clearly labeled deployment and paid live procedures remain mandatory Phase 5 and 6 gates.
 * [ ] Step 4.3: Rerun the complete gate and Markdown checks against the post-documentation repository.
   * Details: .copilot-tracking/details/2026-09-15/ask-my-human-tight-mvp-details.md (Lines 953-972)
 
