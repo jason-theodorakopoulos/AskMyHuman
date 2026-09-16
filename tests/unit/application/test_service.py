@@ -586,6 +586,63 @@ async def test_creator_task_cancellation_persists_expiry_and_cleans_unattached_c
     assert gateway.hung_up == [f"call-{stored.request_id}"]
 
 
+@pytest.mark.parametrize("outcome", [Outcome.CANCELLED, Outcome.DEADLINE_EXCEEDED])
+async def test_late_connected_event_cleans_call_after_create_was_interrupted(
+    outcome: Outcome,
+) -> None:
+    submitted = asyncio.Event()
+
+    class StalledGateway(FakeCallAutomationGateway):
+        async def create_call(self, request: HumanRequest) -> str:
+            self.created.append(request)
+            submitted.set()
+            await asyncio.Event().wait()
+            return "unreachable"
+
+    repository = FakeRequestRepository()
+    gateway = StalledGateway()
+    cancellation = FakeCancellationSignal()
+    service = AskHumanService(
+        repository,
+        gateway,
+        FakeClock(),
+        FakeTelemetry(),
+        deadline_seconds=0.2,
+        work_cutoff_seconds=0.1,
+    )
+    work = asyncio.create_task(
+        service.ask(Principal("subject", "app"), make_request(), cancellation)
+    )
+    await submitted.wait()
+    if outcome is Outcome.CANCELLED:
+        cancellation.cancel()
+    result = await asyncio.wait_for(work, 0.5)
+    assert result.outcome is outcome
+    assert gateway.hung_up == []
+    await service.handle_call_event(
+        CallEvent(result.request_id, CallEventType.CONNECTED, call_id="late-call")
+    )
+    assert gateway.hung_up == ["late-call"]
+    assert gateway.recognitions == []
+    assert repository.requests[result.request_id].result == result
+
+
+async def test_losing_expiry_does_not_interrupt_winning_acknowledgement() -> None:
+    repository = FakeRequestRepository()
+    gateway = FakeCallAutomationGateway()
+    service = make_service(repository, gateway, FakeClock())
+    stored = await admit_for_callback(repository, service)
+    result = AskHumanResult(
+        requestId=stored.request_id,
+        status=RequestStatus.RESPONDED,
+        outcome=Outcome.APPROVED,
+    )
+    await repository.complete_if_pending(result)
+    returned = await service._expire(stored, Outcome.CANCELLED, monotonic(), replay=False)
+    assert returned == result
+    assert gateway.hung_up == []
+
+
 async def test_playback_after_terminal_reaches_gateway_without_reacknowledging() -> None:
     repository = FakeRequestRepository()
     gateway = FakeCallAutomationGateway()

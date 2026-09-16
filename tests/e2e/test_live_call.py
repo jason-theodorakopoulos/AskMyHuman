@@ -28,7 +28,7 @@ from azure.monitor.query import LogsQueryStatus
 from azure.monitor.query.aio import LogsQueryClient
 from mcp import ClientSession
 from mcp.client.streamable_http import streamable_http_client
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from ask_my_human.application.maintenance import RequestMaintenance
 from ask_my_human.contracts import AskHumanResult, Outcome, RequestStatus
@@ -76,15 +76,24 @@ class _Approval(_EvidenceModel):
 class _Deployment(_EvidenceModel):
     source: Literal["az containerapp revision show"]
     captured_at: datetime
+    source_sha: str = Field(pattern=r"^[0-9a-f]{40}$")
     endpoint: str
-    image: str
+    image: str = Field(pattern=r"^\S+@sha256:[0-9a-f]{64}$")
     revision: str
-    database_sha256: str
     active: Literal[True]
     running_state: Literal["Running"]
     health_state: Literal["Healthy"]
     ready: Literal[True]
     traffic_percent: Literal[100]
+    authentication_verified: Literal[True]
+    paid_calls_authorized: Literal[False]
+
+    @field_validator("authentication_verified", "paid_calls_authorized", mode="before")
+    @classmethod
+    def validate_proof_flags(cls, value: object) -> bool:
+        if type(value) is not bool:
+            raise ValueError("Verification proof flags must be JSON booleans.")
+        return value
 
 
 class _Attempt(_EvidenceModel):
@@ -251,8 +260,11 @@ def _validate_preflight(
             raise ValueError
         if any(
             getattr(approval, field) != getattr(deployment, field)
-            for field in ("image", "revision", "database_sha256")
+            for field in ("image", "revision")
         ):
+            raise ValueError
+        digest = deployment.image.rsplit("@sha256:", 1)[1]
+        if not deployment.revision.endswith(f"--{deployment.source_sha[:12]}-{digest[:12]}"):
             raise ValueError
         if sha256(database.encode()).hexdigest() != approval.database_sha256:
             raise ValueError
@@ -326,7 +338,9 @@ def live_preflight(
             authorized = probe.post(
                 "/v1/requests", json={}, headers={"Authorization": f"Bearer {access_token}"}
             )
-            _assert_auth_boundary(authorized.status_code, {422})
+            _assert_auth_boundary(authorized.status_code, {400})
+            if authorized.json().get("code") != "invalid_request":
+                raise AssertionError("Authorized request validation preflight failed.")
     except Exception:
         pytest.fail(
             "Live authentication/readiness preflight failed (details suppressed).", pytrace=False
@@ -360,7 +374,10 @@ def _validate_terminal_wire(body: object, *, outcome: Outcome, elapsed: float) -
         raise AssertionError("Invalid terminal result (content suppressed).") from None
     if result.outcome is not outcome:
         raise AssertionError("Unexpected terminal outcome (content suppressed).")
-    if result.model_dump(mode="json", by_alias=True) != body:
+    if not isinstance(body, dict) or result.model_dump(mode="json", by_alias=True) != {
+        "answer": None,
+        **body,
+    }:
         raise AssertionError("The terminal wire result is not canonical (content suppressed).")
     if not 0 <= elapsed <= 210:
         raise AssertionError("The caller exceeded the 210-second terminal bound.")
@@ -450,7 +467,9 @@ async def _assert_stored_terminal(
     stored = await repository.get(result.request_id)
     _assert_stored_matches(stored, result)
     assert stored is not None
-    if stored.result is None or stored.result.model_dump(mode="json", by_alias=True) != body:
+    if stored.result is None or stored.result.model_dump(
+        mode="json", by_alias=True
+    ) != result.model_dump(mode="json", by_alias=True):
         raise AssertionError("The complete stored and wire representations differ.")
     return stored
 

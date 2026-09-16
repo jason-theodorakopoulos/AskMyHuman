@@ -14,8 +14,13 @@ import httpx
 import pytest
 from azure.monitor.query import LogsQueryStatus
 from e2e import test_live_call as harness
+from fastapi import FastAPI
+from support.fakes import FakeAskHumanUseCase
+from unit.test_deploy_script import Deployment
+from unit.test_deploy_script import deployment as deployment
 
-from ask_my_human.contracts import AskHumanRequest, AskHumanResult, Outcome
+from ask_my_human.api.requests import create_requests_router
+from ask_my_human.contracts import AskHumanRequest, AskHumanResult, Outcome, RequestStatus
 from ask_my_human.domain.models import HumanRequest, Principal, RequestState
 
 
@@ -48,11 +53,20 @@ def _body(**changes: object) -> dict[str, object]:
         (_body(status="expired", outcome="deadline_exceeded"), Outcome.CANCELLED, 1),
         (_body(), Outcome.APPROVED, 210.01),
         (_body(extra="sensitive-value"), Outcome.APPROVED, 1),
+        (_body(outcome="answered", answer=" padded "), Outcome.ANSWERED, 1),
+        (_body(outcome="answered", answer=123), Outcome.ANSWERED, 1),
+        (_body(answer="unexpected"), Outcome.APPROVED, 1),
+        (_body(status="expired"), Outcome.APPROVED, 1),
+        (_body(requestId="AAAAAAAA-AAAA-4AAA-AAAA-AAAAAAAAAAAA"), Outcome.APPROVED, 1),
     ],
 )
+@pytest.mark.parametrize("omit_null_answer", [False, True])
 def test_terminal_gate_rejects_false_positives(
-    body: dict[str, object], outcome: Outcome, elapsed: float
+    body: dict[str, object], outcome: Outcome, elapsed: float, omit_null_answer: bool
 ) -> None:
+    if omit_null_answer and body.get("answer") is None:
+        body = body.copy()
+        body.pop("answer")
     with pytest.raises(AssertionError):
         harness._validate_terminal_wire(body, outcome=outcome, elapsed=elapsed)
 
@@ -63,18 +77,75 @@ def test_terminal_gate_accepts_exact_result_at_deadline() -> None:
     assert result.model_dump(mode="json", by_alias=True) == body
 
 
+@pytest.mark.parametrize("exclude_none", [True, False], ids=["http", "mcp"])
+@pytest.mark.parametrize("outcome", list(Outcome))
+async def test_terminal_gate_accepts_canonical_wire_and_store(
+    outcome: Outcome, exclude_none: bool
+) -> None:
+    stored = _stored()
+    responded = outcome in {Outcome.APPROVED, Outcome.REJECTED, Outcome.ANSWERED}
+    result = AskHumanResult(
+        requestId=stored.request_id,
+        status=RequestStatus.RESPONDED if responded else RequestStatus.EXPIRED,
+        outcome=outcome,
+        answer="spoken answer" if outcome is Outcome.ANSWERED else None,
+    )
+    stored = replace(
+        stored,
+        state=RequestState.RESPONDED if responded else RequestState.EXPIRED,
+        result=result,
+    )
+    body = result.model_dump(mode="json", by_alias=True, exclude_none=exclude_none)
+    repository = MagicMock()
+    repository.get = AsyncMock(return_value=stored)
+    assert harness._validate_terminal_wire(body, outcome=outcome, elapsed=210) == result
+    assert await harness._assert_stored_terminal(repository, body, outcome=outcome) == stored
+    repository.get.assert_awaited_once_with(result.request_id)
+
+
+@pytest.mark.parametrize("field", ["requestId", "status", "outcome"])
+def test_terminal_gate_rejects_missing_required_fields(field: str) -> None:
+    body = _body()
+    body.pop("answer")
+    body.pop(field)
+    with pytest.raises(AssertionError):
+        harness._validate_terminal_wire(body, outcome=Outcome.APPROVED, elapsed=1)
+
+
+@pytest.mark.parametrize("field", ["request_id", "status", "outcome", "answer"])
+@pytest.mark.parametrize("exclude_none", [True, False], ids=["http", "mcp"])
+async def test_terminal_gate_rejects_any_store_mismatch(field: str, exclude_none: bool) -> None:
+    stored = _stored()
+    assert stored.result is not None
+    body = stored.result.model_dump(mode="json", by_alias=True, exclude_none=exclude_none)
+    changes = {
+        "request_id": uuid4(),
+        "status": RequestStatus.EXPIRED,
+        "outcome": Outcome.REJECTED,
+        "answer": "unexpected answer",
+    }
+    repository = MagicMock()
+    repository.get = AsyncMock(
+        return_value=replace(
+            stored, result=stored.result.model_copy(update={field: changes[field]})
+        )
+    )
+    with pytest.raises(AssertionError, match="differs"):
+        await harness._assert_stored_terminal(repository, body, outcome=Outcome.APPROVED)
+
+
 def _evidence() -> tuple[dict[str, object], dict[str, object]]:
     now = datetime.now(tz=UTC)
     common: dict[str, object] = {
         "endpoint": "https://example.invalid",
         "image": "registry.invalid/app@sha256:" + "a" * 64,
-        "revision": "reviewed-revision",
-        "database_sha256": sha256(b"dummy-dsn").hexdigest(),
+        "revision": "reviewed-app--" + "b" * 12 + "-" + "a" * 12,
     }
     approval = common | {
         "record": "approval-123",
         "approver": "operator",
         "expires_at": (now + timedelta(hours=1)).isoformat(),
+        "database_sha256": sha256(b"dummy-dsn").hexdigest(),
         "database_isolated": True,
         "decisions": {f"DR-0{number}": "approved-record" for number in range(1, 6)},
         "scenarios": {"test_example": "setup-record"},
@@ -87,11 +158,14 @@ def _evidence() -> tuple[dict[str, object], dict[str, object]]:
     deployment = common | {
         "source": "az containerapp revision show",
         "captured_at": now.isoformat(),
+        "source_sha": "b" * 40,
         "active": True,
         "running_state": "Running",
         "health_state": "Healthy",
         "ready": True,
         "traffic_percent": 100,
+        "authentication_verified": True,
+        "paid_calls_authorized": False,
     }
     return approval, deployment
 
@@ -136,7 +210,111 @@ def test_preflight_accepts_bound_fresh_evidence() -> None:
         "dummy-dsn",
         datetime.now(tz=UTC),
     )
-    assert result.revision == "reviewed-revision"
+    assert result.revision == approval["revision"]
+
+
+@pytest.fixture
+def verified_deployment(deployment: Deployment) -> dict[str, object]:
+    deployment.verification()
+    response = deployment.run("verify")
+    assert response.returncode == 0, response.stderr
+    evidence: dict[str, object] = json.loads(response.stdout)
+    assert "database_sha256" not in evidence
+    assert evidence["authentication_verified"] is True
+    assert evidence["paid_calls_authorized"] is False
+    assert not any(
+        call["args"][:2] == ["acr", "build"]
+        or call["args"][:3] == ["deployment", "group", "create"]
+        for call in deployment.calls("az")
+    )
+    return evidence
+
+
+def test_preflight_accepts_actual_verifier_output_with_separate_database_approval(
+    verified_deployment: dict[str, object],
+) -> None:
+    approval, _ = _evidence()
+    approval.update(
+        {field: verified_deployment[field] for field in ("endpoint", "image", "revision")}
+    )
+    result = harness._validate_preflight(
+        json.dumps(approval),
+        json.dumps(verified_deployment),
+        "https://app.invalid",
+        "dummy-dsn",
+        datetime.now(tz=UTC),
+    )
+    assert result.database_sha256 == sha256(b"dummy-dsn").hexdigest()
+    assert result.database_isolated is True
+    assert result.revision == verified_deployment["revision"]
+
+
+@pytest.mark.parametrize(
+    ("target", "field", "value"),
+    [
+        ("deployment", "source", "unverified"),
+        ("deployment", "source_sha", "not-a-sha"),
+        ("deployment", "source_sha", "c" * 40),
+        ("deployment", "image", "registry.invalid/app@sha256:" + "c" * 64),
+        ("deployment", "revision", "other-revision"),
+        ("deployment", "endpoint", "https://other.invalid"),
+        ("deployment", "captured_at", "2020-01-01T00:00:00Z"),
+        ("deployment", "authentication_verified", False),
+        ("deployment", "authentication_verified", 1),
+        ("deployment", "authentication_verified", "true"),
+        ("deployment", "paid_calls_authorized", True),
+        ("deployment", "paid_calls_authorized", 0),
+        ("deployment", "extra", "unreviewed"),
+        ("approval", "database_sha256", "0" * 64),
+        ("approval", "database_isolated", False),
+    ],
+)
+def test_preflight_rejects_mutated_verifier_handoff(
+    verified_deployment: dict[str, object], target: str, field: str, value: object
+) -> None:
+    approval, _ = _evidence()
+    approval.update(
+        {field: verified_deployment[field] for field in ("endpoint", "image", "revision")}
+    )
+    (approval if target == "approval" else verified_deployment)[field] = value
+    with pytest.raises(AssertionError, match="evidence"):
+        harness._validate_preflight(
+            json.dumps(approval),
+            json.dumps(verified_deployment),
+            "https://app.invalid",
+            "dummy-dsn",
+            datetime.now(tz=UTC),
+        )
+
+
+@pytest.mark.parametrize(
+    ("target", "field"),
+    [
+        ("deployment", "authentication_verified"),
+        ("deployment", "paid_calls_authorized"),
+        ("deployment", "source_sha"),
+        ("approval", "database_sha256"),
+        ("approval", "database_isolated"),
+        ("approval", "record"),
+        ("approval", "decisions"),
+    ],
+)
+def test_preflight_requires_independent_approval_and_verification_fields(
+    verified_deployment: dict[str, object], target: str, field: str
+) -> None:
+    approval, _ = _evidence()
+    approval.update(
+        {field: verified_deployment[field] for field in ("endpoint", "image", "revision")}
+    )
+    (approval if target == "approval" else verified_deployment).pop(field)
+    with pytest.raises(AssertionError, match="evidence"):
+        harness._validate_preflight(
+            json.dumps(approval),
+            json.dumps(verified_deployment),
+            "https://app.invalid",
+            "dummy-dsn",
+            datetime.now(tz=UTC),
+        )
 
 
 @pytest.mark.parametrize("status", [200, 302, 404, 422, 500])
@@ -307,10 +485,35 @@ async def test_pending_gate_rejects_already_completed_request(
             await task
 
 
+@pytest.fixture
+async def invalid_request_response() -> httpx.Response:
+    use_case = FakeAskHumanUseCase()
+    app = FastAPI()
+    app.include_router(
+        create_requests_router(
+            use_case=use_case,
+            authenticate=AsyncMock(return_value=Principal("dummy-agent", "dummy-app")),
+        )
+    )
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="https://example.invalid"
+    ) as client:
+        response = await client.post("/v1/requests", json={})
+    assert response.status_code == 400
+    assert response.json()["code"] == "invalid_request"
+    assert use_case.requests == []
+    return response
+
+
 @pytest.mark.parametrize("anonymous_status", [200, 302, 404, 401])
+@pytest.mark.parametrize("authorized_status", [400, 422])
+@pytest.mark.parametrize("authorized_code", ["invalid_request", "forbidden"])
 def test_preflight_uses_cost_free_dummy_requests(
     monkeypatch: pytest.MonkeyPatch,
     anonymous_status: int,
+    authorized_status: int,
+    authorized_code: str,
+    invalid_request_response: httpx.Response,
 ) -> None:
     approval, _ = _evidence()
     parsed = harness._Approval.model_validate_json(json.dumps(approval))
@@ -321,7 +524,14 @@ def test_preflight_uses_cost_free_dummy_requests(
         if request.method == "GET":
             return httpx.Response(200)
         if request.headers.get("authorization") == "Bearer dummy-access":
-            return httpx.Response(422)
+            if authorized_status == 400 and authorized_code == "invalid_request":
+                return httpx.Response(
+                    invalid_request_response.status_code, content=invalid_request_response.content
+                )
+            return httpx.Response(
+                authorized_status,
+                json=invalid_request_response.json() | {"code": authorized_code},
+            )
         return httpx.Response(anonymous_status)
 
     original_client = httpx.Client
@@ -344,7 +554,11 @@ def test_preflight_uses_cost_free_dummy_requests(
     )
     monkeypatch.setattr(harness, "SyncLogsQueryClient", query)
     preflight = inspect.unwrap(harness.live_preflight)
-    if anonymous_status == 401:
+    if (
+        anonymous_status == 401
+        and authorized_status == 400
+        and authorized_code == "invalid_request"
+    ):
         assert preflight(parsed, "dummy-access", None) == parsed
     else:
         with pytest.raises(pytest.fail.Exception, match="preflight failed"):
