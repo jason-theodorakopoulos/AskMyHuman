@@ -81,6 +81,7 @@ class ApplicationComponents:
     use_case: AskHumanUseCase
     maintenance: RequestMaintenance
     validate_callback_token: Callable[[str], Awaitable[None]]
+    # Listed in shutdown order; the pool always closes after these clients.
     closers: tuple[Callable[[], Awaitable[None]], ...] = field(default_factory=tuple)
 
 
@@ -124,6 +125,7 @@ def build_components(settings: Settings) -> ApplicationComponents:
         work_cutoff_seconds=settings.work_cutoff_seconds,
         poll_interval_seconds=settings.poll_interval_milliseconds / 1000,
     )
+    # Maintenance intervals are fixed operational defaults and carry no setting.
     maintenance = RequestMaintenance(
         repository,
         clock,
@@ -176,8 +178,7 @@ def create_app(components: ApplicationComponents | None = None) -> FastAPI:
         async with AsyncExitStack() as stack:
             await resolved.pool.open()
             stack.push_async_callback(resolved.pool.close)
-            for close in reversed(resolved.closers):
-                stack.push_async_callback(close)
+            stack.push_async_callback(_close_all, resolved.closers)
             await stack.enter_async_context(mcp_server.session_manager.run())
 
             maintenance_tasks = [
@@ -210,6 +211,11 @@ def create_app(components: ApplicationComponents | None = None) -> FastAPI:
     # Mount last so the catch-all MCP transport never shadows an HTTP route.
     app.mount("/", mcp_app)
     return app
+
+
+async def _close_all(closers: Sequence[Callable[[], Awaitable[None]]]) -> None:
+    for close in closers:
+        await close()
 
 
 async def _stop_tasks(shutdown: ShutdownSignal, tasks: Sequence[asyncio.Task[None]]) -> None:

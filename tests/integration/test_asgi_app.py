@@ -293,7 +293,6 @@ async def test_maintenance_loops_run_and_stop_with_the_lifespan(
     composition: Composition,
 ) -> None:
     app = composition.app()
-    before_tasks = asyncio.all_tasks()
     async with app.router.lifespan_context(app):
         for _ in range(20):
             await asyncio.sleep(0)
@@ -302,7 +301,10 @@ async def test_maintenance_loops_run_and_stop_with_the_lifespan(
 
     assert composition.repository.expiry_runs >= 1
     assert composition.repository.purge_runs >= 1
-    assert asyncio.all_tasks() <= before_tasks
+
+    stopped = (composition.repository.expiry_runs, composition.repository.purge_runs)
+    await asyncio.sleep(0.05)
+    assert (composition.repository.expiry_runs, composition.repository.purge_runs) == stopped
 
 
 def test_callback_payload_parsing_skips_non_terminal_events() -> None:
