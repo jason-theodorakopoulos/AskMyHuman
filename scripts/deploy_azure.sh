@@ -36,7 +36,8 @@ require_variables() {
 }
 
 azure() {
-  local limit=120
+  local limit="${AZURE_COMMAND_TIMEOUT_SECONDS:-120}"
+  [[ "$limit" =~ ^[1-9][0-9]{0,3}$ ]] && ((limit <= 3600)) || fail 'invalid Azure command timeout'
   if [[ -n "${VERIFY_DEADLINE:-}" ]]; then
     limit=$((VERIFY_DEADLINE - SECONDS))
     ((limit > 0)) || fail 'revision verification deadline exhausted'
@@ -142,7 +143,8 @@ binding() {
 
 what_if() {
   local result summary
-  result="$(azure deployment group what-if --resource-group "$AZURE_RESOURCE_GROUP" \
+  result="$(AZURE_COMMAND_TIMEOUT_SECONDS="${WHAT_IF_TIMEOUT_SECONDS:-900}" \
+    azure deployment group what-if --resource-group "$AZURE_RESOURCE_GROUP" \
     --template-file infra/main.bicep --parameters infra/environments/dev.bicepparam \
     --no-pretty-print --output json)"
   summary="$(printf '%s' "$result" | jq -ce '
@@ -322,7 +324,8 @@ main() {
     publish
   else
     local result
-    result="$(azure deployment group create --name "askmyhuman-$REVISION_SUFFIX" \
+    result="$(AZURE_COMMAND_TIMEOUT_SECONDS="${DEPLOY_TIMEOUT_SECONDS:-3600}" \
+      azure deployment group create --name "askmyhuman-$REVISION_SUFFIX" \
       --resource-group "$AZURE_RESOURCE_GROUP" --template-file infra/main.bicep \
       --parameters infra/environments/dev.bicepparam --output json)"
     printf '%s' "$result" | jq -e --arg app "$CONTAINER_APP_NAME" '
