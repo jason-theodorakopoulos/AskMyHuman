@@ -210,13 +210,53 @@ repository:
 * Approval of the default 24-hour database retention and 30-day content-free
   telemetry retention, or an explicit configuration change.
 
-Given those inputs, deployment uses the Bicep templates in `infra/`:
+Given those inputs, `scripts/deploy_azure.sh` performs the whole flow. Export
+every input as an environment variable, never as a committed parameter literal:
+`AZURE_RESOURCE_GROUP`, `AZURE_LOCATION`, `CONTAINER_REGISTRY_NAME`,
+`CONTAINER_REGISTRY_SERVER`, `CONTAINER_REGISTRY_RESOURCE_ID`,
+`POSTGRES_ADMIN_PASSWORD`, `MY_MOBILE_NUMBER`, `ACS_SOURCE_PHONE_NUMBER`,
+`ENTRA_TENANT_ID`, `ENTRA_CLIENT_ID`, `ENTRA_CLIENT_SECRET`,
+`AUTHORIZED_AGENT_APP_IDS`, `EXISTING_ACS_RESOURCE_ID`, `ACS_CALLBACK_AUDIENCE`,
+and `MCP_ALLOWED_HOSTS`.
+
+```bash
+scripts/deploy_azure.sh what-if   # Review the change list only
+scripts/deploy_azure.sh deploy    # what-if, ACR build, Bicep deploy, revision and auth checks
+scripts/deploy_azure.sh verify    # Re-verify the deployed revision later
+```
+
+`deploy` tags the image with the full Git commit SHA, so every revision is
+immutable and traceable. It fails before any billable phone call when the ready
+revision does not run that exact image, when the revision is not active and
+running, when the liveness probe does not answer, or when `/v1/requests`,
+`/mcp`, or the ACS callback accepts an unauthenticated caller. `verify` needs
+only `AZURE_RESOURCE_GROUP`, resolves the container app from that group, and so
+works from any commit without deployment secrets; set `CONTAINER_APP_NAME` when
+the group holds more than one app, and `CONTAINER_IMAGE` to assert that a
+specific image is running.
+
+The underlying steps remain plain Bicep commands if you prefer to run them
+directly:
 
 ```bash
 az bicep build --file infra/main.bicep
 az deployment group what-if --resource-group <rg> --template-file infra/main.bicep --parameters <params-file>
 az deployment group create --resource-group <rg> --template-file infra/main.bicep --parameters <params-file>
 ```
+
+### Live Call Validation
+
+Live tests place real phone calls and cost money. They stay out of the default
+selection behind the `live` marker and `RUN_LIVE_AZURE_TESTS=1`:
+
+```bash
+RUN_LIVE_AZURE_TESTS=1 uv run pytest -m live tests/e2e/test_live_call.py -vv
+```
+
+They additionally require `LIVE_BASE_URL`, `LIVE_API_SCOPE`,
+`LIVE_AGENT_TENANT_ID`, `LIVE_AGENT_CLIENT_ID`, `LIVE_AGENT_CLIENT_SECRET`,
+`DATABASE_URL`, and `LIVE_LOG_ANALYTICS_WORKSPACE_ID`. Each test docstring says
+whether to answer the phone or let it ring.
 
 Azure resources use public service endpoints (no VNet) protected by TLS,
 managed identity, and application-level authentication; see decision DD-05 in

@@ -284,6 +284,28 @@ The complete local merge gate (Step 4.1 command list) was rerun after merging
 repository Markdown linter is configured; `git diff --check` on `README.md`
 reported no whitespace errors.
 
+## Phase 5 Changes: Azure Deployment And Live Validation
+
+### Step 5.1 And Step 5.2: Deployment Automation
+
+* Added `scripts/deploy_azure.sh` with `what-if`, `deploy`, and `verify` subcommands.
+* `deploy` builds an image tagged with the full Git commit SHA, deploys the resource-group Bicep template, verifies that the ready revision runs that exact image and is active, running, and answering the liveness probe, and then asserts that `/v1/requests`, `/mcp`, and the ACS callback all reject unauthenticated callers before any billable call can be placed.
+* `verify` resolves the container app from the resource group, so it needs only `AZURE_RESOURCE_GROUP` and works from any commit.
+
+### Step 5.3: Live Validation Matrix
+
+* Extended `tests/e2e/test_live_call.py` with unauthenticated-request rejection, invalid callback-token rejection, unanswered-call expiry, client-cancellation exactly-once termination, and one-call-one-terminal-row idempotency scenarios.
+* All live scenarios remain gated behind the `live` marker and `RUN_LIVE_AZURE_TESTS=1`.
+
+### Step 4.2 Addendum: Deployment Documentation
+
+* Added a deployment and live-validation section to `README.md` covering `scripts/deploy_azure.sh` and the gated live matrix.
+
+## Phase 5 Validation
+
+* The local gate listed in Step 4.1 was rerun and passed.
+* Steps 5.1, 5.2, and 5.3 were not executed. They require a real subscription, registry, ACS number, and Entra registrations that are unavailable in this environment, and Step 5.3 places billable phone calls. The automation for each step exists and is recorded in the planning log.
+
 ## Updated Release Summary
 
 Phases 0, 1A, 1B, 2, 3, and 4 are complete for the tight MVP. Phase 2
@@ -293,5 +315,6 @@ Phase 4 (local validation gate and documentation) is delivered by this
 branch. Phase 5 (Azure deployment and live validation) remains gated on
 tenant-specific inputs (existing ACS resource, Entra tenant/application
 registrations, target subscription/region/registry, and retention approval)
-recorded as DR-01 through DR-05 in the planning log, and is not attempted by
-this change.
+recorded as DR-01 through DR-05 in the planning log. Phase 5's repeatable
+deployment and live-validation automation is delivered by this branch; its
+execution against a real subscription remains blocked on those inputs.

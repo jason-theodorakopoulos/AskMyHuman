@@ -224,13 +224,20 @@ workstreams pass scoped checks.
 <!-- parallelizable: false -->
 
 This release phase remains blocked until DR-01 through DR-05 have supplied or
-approved values.
+approved values. The repeatable automation for every step now exists
+(`scripts/deploy_azure.sh` for Steps 5.1 and 5.2, the gated matrix in
+`tests/e2e/test_live_call.py` for Step 5.3), so each step below is blocked only
+on tenant access, not on missing implementation. No step may be checked until it
+has actually executed against a real subscription.
 
 * [ ] Step 5.1: Resolve tenant-specific gates and review the Azure deployment with `what-if`.
+  * Status: Blocked on DR-01 through DR-05. Run `scripts/deploy_azure.sh what-if`.
   * Details: .copilot-tracking/details/2026-09-15/ask-my-human-tight-mvp-details.md (Lines 981-1005)
 * [ ] Step 5.2: Build and publish a Git-SHA-tagged image, deploy it with Bicep, and verify revision health, probes, and authentication boundaries.
+  * Status: Blocked on Step 5.1. Run `scripts/deploy_azure.sh deploy`.
   * Details: .copilot-tracking/details/2026-09-15/ask-my-human-tight-mvp-details.md (Lines 1006-1049)
 * [ ] Step 5.3: Execute the gated real-call outcome, race, cancellation, idempotency, retention, and telemetry matrix against the verified revision.
+  * Status: Blocked on Step 5.2. Run `RUN_LIVE_AZURE_TESTS=1 uv run pytest -m live`.
   * Details: .copilot-tracking/details/2026-09-15/ask-my-human-tight-mvp-details.md (Lines 1050-1085)
 
 ### [ ] Implementation Phase 6: Final Validation And Release Handoff

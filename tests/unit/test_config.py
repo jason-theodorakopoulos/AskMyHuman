@@ -74,3 +74,27 @@ def test_settings_parse_comma_separated_allow_lists() -> None:
 def test_settings_require_nonempty_allow_lists(field: str, message: str) -> None:
     with pytest.raises(ValidationError, match=message):
         settings(**{field: ()})
+
+
+def test_settings_parse_comma_separated_allow_lists_from_the_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    environment = {
+        "DATABASE_URL": "postgresql://localhost:5432/askmyhuman",
+        "ACS_ENDPOINT": "https://example.communication.azure.com",
+        "ACS_SOURCE_PHONE_NUMBER": "+15555550100",
+        "MY_MOBILE_NUMBER": "+15555550101",
+        "AZURE_AI_ENDPOINT": "https://example.cognitiveservices.azure.com",
+        "ACS_CALLBACK_AUDIENCE": "https://askmyhuman.example.com",
+        "ENTRA_TENANT_ID": "tenant",
+        "ENTRA_CLIENT_ID": "client",
+        "AUTHORIZED_AGENT_APP_IDS": "agent-a,agent-b",
+        "MCP_ALLOWED_HOSTS": "one.example.com,two.example.com",
+    }
+    for name, value in environment.items():
+        monkeypatch.setenv(name, value)
+
+    configured = Settings()
+
+    assert configured.authorized_agent_app_ids == ("agent-a", "agent-b")
+    assert configured.mcp_allowed_hosts == ("one.example.com", "two.example.com")

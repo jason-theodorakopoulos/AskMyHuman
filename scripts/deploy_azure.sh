@@ -1,0 +1,236 @@
+#!/usr/bin/env bash
+# Phase 5 Step 5.1 and 5.2: review, publish, deploy, and verify one immutable revision.
+#
+# Usage:
+#   scripts/deploy_azure.sh what-if     # Review the deployment without changing Azure
+#   scripts/deploy_azure.sh deploy      # Build the image, deploy Bicep, verify the revision
+#   scripts/deploy_azure.sh verify      # Re-verify the current revision and auth boundaries
+#
+# Every value comes from the environment so no secret is ever committed or echoed.
+set -euo pipefail
+
+IMAGE_REPOSITORY="${IMAGE_REPOSITORY:-ask-my-human}"
+REQUIRED_VARIABLES=(
+  AZURE_RESOURCE_GROUP
+  AZURE_LOCATION
+  CONTAINER_REGISTRY_NAME
+  CONTAINER_REGISTRY_SERVER
+  CONTAINER_REGISTRY_RESOURCE_ID
+  POSTGRES_ADMIN_PASSWORD
+  MY_MOBILE_NUMBER
+  ACS_SOURCE_PHONE_NUMBER
+  ENTRA_TENANT_ID
+  ENTRA_CLIENT_ID
+  ENTRA_CLIENT_SECRET
+  AUTHORIZED_AGENT_APP_IDS
+  EXISTING_ACS_RESOURCE_ID
+  ACS_CALLBACK_AUDIENCE
+  MCP_ALLOWED_HOSTS
+)
+# Verification only reads an already deployed app, so it must never demand the
+# deployment secrets that the Bicep parameter file consumes.
+VERIFY_VARIABLES=(
+  AZURE_RESOURCE_GROUP
+)
+
+log() {
+  printf '==> %s\n' "$1" >&2
+}
+
+fail() {
+  printf 'error: %s\n' "$1" >&2
+  exit 1
+}
+
+require_environment() {
+  # Fail before touching Azure when any named variable or required CLI is missing.
+  local missing=()
+  local name
+  for name in "$@"; do
+    if [[ -z "${!name:-}" ]]; then
+      missing+=("$name")
+    fi
+  done
+  if ((${#missing[@]} > 0)); then
+    fail "missing required environment variables: ${missing[*]}"
+  fi
+  command -v az >/dev/null || fail "the Azure CLI is required"
+  command -v curl >/dev/null || fail "curl is required"
+}
+
+git_sha() {
+  git rev-parse HEAD
+}
+
+resolve_image() {
+  # The full commit SHA keeps the deployed image immutable and traceable. An explicit
+  # CONTAINER_IMAGE wins so that verify can target a revision built from another commit.
+  if [[ -n "${CONTAINER_IMAGE:-}" ]]; then
+    EXPECTED_IMAGE="$CONTAINER_IMAGE"
+    export CONTAINER_IMAGE
+    return
+  fi
+  command -v git >/dev/null || fail "git is required"
+
+  local sha
+  sha="$(git_sha)"
+  export CONTAINER_IMAGE="${CONTAINER_REGISTRY_SERVER}/${IMAGE_REPOSITORY}:${sha}"
+  EXPECTED_IMAGE="$CONTAINER_IMAGE"
+}
+
+deployment_name() {
+  printf 'ask-my-human-%s' "$(git_sha | cut -c1-12)"
+}
+
+run_what_if() {
+  log "Reviewing the deployment with what-if"
+  az deployment group what-if \
+    --resource-group "$AZURE_RESOURCE_GROUP" \
+    --template-file infra/main.bicep \
+    --parameters infra/environments/dev.bicepparam \
+    --no-pretty-print >/dev/null
+  log "what-if completed; rerun without --no-pretty-print to read the change list locally"
+}
+
+build_image() {
+  log "Building ${IMAGE_REPOSITORY}:$(git_sha) in ${CONTAINER_REGISTRY_NAME}"
+  az acr build \
+    --registry "$CONTAINER_REGISTRY_NAME" \
+    --image "${IMAGE_REPOSITORY}:$(git_sha)" \
+    . >/dev/null
+}
+
+deploy_bicep() {
+  log "Creating deployment $(deployment_name)"
+  az deployment group create \
+    --name "$(deployment_name)" \
+    --resource-group "$AZURE_RESOURCE_GROUP" \
+    --template-file infra/main.bicep \
+    --parameters infra/environments/dev.bicepparam \
+    --query 'properties.provisioningState' \
+    --output tsv
+}
+
+container_app_override() {
+  # An explicit CONTAINER_APP_NAME always wins over any lookup.
+  [[ -n "${CONTAINER_APP_NAME:-}" ]] || return 1
+  printf '%s' "$CONTAINER_APP_NAME"
+}
+
+deployed_container_app_name() {
+  # The name of the app this run just deployed, taken from the deployment outputs.
+  container_app_override && return
+  az deployment group show \
+    --name "$(deployment_name)" \
+    --resource-group "$AZURE_RESOURCE_GROUP" \
+    --query properties.outputs.containerAppName.value \
+    --output tsv
+}
+
+existing_container_app_name() {
+  # The name of the already deployed app, resolved from the resource group so that
+  # verification never depends on the checked-out commit.
+  container_app_override && return
+  local names count
+  names="$(az containerapp list --resource-group "$AZURE_RESOURCE_GROUP" \
+    --query '[].name' --output tsv)"
+  [[ -n "$names" ]] || fail "no container app exists in ${AZURE_RESOURCE_GROUP}"
+  count="$(printf '%s\n' "$names" | grep -c .)"
+  ((count == 1)) || fail "set CONTAINER_APP_NAME; ${AZURE_RESOURCE_GROUP} holds ${count} container apps"
+  printf '%s' "$names"
+}
+
+verify_revision() {
+  local app="$1"
+  local revision image active running
+  revision="$(az containerapp show --name "$app" --resource-group "$AZURE_RESOURCE_GROUP" \
+    --query properties.latestReadyRevisionName --output tsv)"
+  [[ -n "$revision" ]] || fail "the container app has no ready revision"
+
+  image="$(az containerapp revision show --name "$app" --resource-group "$AZURE_RESOURCE_GROUP" \
+    --revision "$revision" --query 'properties.template.containers[0].image' --output tsv)"
+  active="$(az containerapp revision show --name "$app" --resource-group "$AZURE_RESOURCE_GROUP" \
+    --revision "$revision" --query 'properties.active' --output tsv)"
+  running="$(az containerapp revision show --name "$app" --resource-group "$AZURE_RESOURCE_GROUP" \
+    --revision "$revision" --query 'properties.runningState' --output tsv)"
+
+  log "Ready revision ${revision} runs ${image} (active=${active}, runningState=${running})"
+  if [[ -n "${EXPECTED_IMAGE:-}" ]]; then
+    [[ "$image" == "$EXPECTED_IMAGE" ]] || fail "revision image ${image} is not the expected ${EXPECTED_IMAGE}"
+  fi
+  [[ "$active" == "true" ]] || fail "revision ${revision} is not active"
+  [[ "$running" == "Running" ]] || fail "revision ${revision} is not running"
+}
+
+verify_authentication_boundary() {
+  local base_url="$1"
+  local status
+  local invalid_authorization="Bearer invalid-callback-token"
+
+  status="$(curl -s -o /dev/null -w '%{http_code}' -X POST "${base_url}/v1/requests" \
+    -H 'content-type: application/json' \
+    -d '{"kind":"approval","prompt":"smoke","idempotencyKey":"00000000-0000-4000-8000-000000000000"}')"
+  [[ "$status" == "401" || "$status" == "403" ]] || fail "/v1/requests accepted an unauthenticated caller (${status})"
+
+  status="$(curl -s -o /dev/null -w '%{http_code}' -X POST "${base_url}/mcp" \
+    -H 'content-type: application/json' -H 'accept: application/json, text/event-stream' \
+    -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}')"
+  [[ "$status" == "401" || "$status" == "403" ]] || fail "/mcp accepted an unauthenticated caller (${status})"
+
+  status="$(curl -s -o /dev/null -w '%{http_code}' -X POST "${base_url}/v1/callbacks/acs" \
+    -H 'content-type: application/json' -H "authorization: ${invalid_authorization}" \
+    -d '[]')"
+  [[ "$status" == "401" ]] || fail "the ACS callback accepted an invalid token (${status})"
+
+  status="$(curl -s -o /dev/null -w '%{http_code}' "${base_url}/health/live")"
+  [[ "$status" == "200" ]] || fail "the liveness probe returned ${status}"
+  log "Authentication boundary and liveness probe verified"
+}
+
+service_url() {
+  local app="$1"
+  local fqdn
+  fqdn="$(az containerapp show --name "$app" --resource-group "$AZURE_RESOURCE_GROUP" \
+    --query properties.configuration.ingress.fqdn --output tsv)"
+  printf 'https://%s' "$fqdn"
+}
+
+main() {
+  local command="${1:-deploy}"
+
+  case "$command" in
+    what-if)
+      require_environment "${REQUIRED_VARIABLES[@]}"
+      resolve_image
+      run_what_if
+      ;;
+    deploy)
+      require_environment "${REQUIRED_VARIABLES[@]}"
+      resolve_image
+      command -v git >/dev/null || fail "git is required"
+      run_what_if
+      build_image
+      deploy_bicep
+      local app
+      app="$(deployed_container_app_name)"
+      verify_revision "$app"
+      verify_authentication_boundary "$(service_url "$app")"
+      log "Deployment verified. Live calls may now run against $(service_url "$app")"
+      ;;
+    verify)
+      require_environment "${VERIFY_VARIABLES[@]}"
+      # Verification reports whichever image the ready revision runs unless the caller
+      # pins an expectation by exporting CONTAINER_IMAGE.
+      EXPECTED_IMAGE="${CONTAINER_IMAGE:-}"
+      local existing
+      existing="$(existing_container_app_name)"
+      verify_revision "$existing"
+      verify_authentication_boundary "$(service_url "$existing")"
+      ;;
+    *)
+      fail "unknown command: ${command}"
+      ;;
+  esac
+}
+
+main "$@"
