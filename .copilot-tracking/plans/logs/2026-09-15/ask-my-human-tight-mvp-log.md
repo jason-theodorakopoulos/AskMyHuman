@@ -152,3 +152,34 @@ authentication smoke checks, failure handling, and separately gated live-test
 step. DR-01 through DR-05 remain tenant-owned external release inputs with
 explicit resolution gates in Step 5.1, not unplanned implementation gaps. DD-01
 and DD-02 remain intentional, research-backed decisions.
+
+## Phase 5 Execution Status
+
+Recorded on 2026-09-16.
+
+Phase 5 implementation is complete and Phase 5 execution is blocked.
+
+* Blocked: Steps 5.1, 5.2, and 5.3 need an Azure subscription, a container
+  registry, an ACS resource with an outbound-enabled number, and the Entra
+  registrations described by DR-01 through DR-05. None are available in the
+  implementation environment, and Step 5.3 places billable calls.
+* Ready to run: `scripts/deploy_azure.sh what-if`, then
+  `scripts/deploy_azure.sh deploy`, then
+  `RUN_LIVE_AZURE_TESTS=1 uv run pytest -m live tests/e2e/test_live_call.py -vv`.
+* DR-01 through DR-05 remain unresolved and stay tenant-owned release inputs.
+
+## Additional Follow-On Work
+
+* WI-06: Fix the pre-existing strict-typing errors in the test suite (medium
+  priority, small effort).
+  * Source: `uv run mypy src tests` reports 36 errors across 8 test modules that
+    predate Phase 2 composition. `src` alone is clean, so the CI typing job is
+    red independently of the composition and deployment work.
+  * Dependency: None.
+* WI-07: Confirm during the first real deployment that Container Apps health
+  probes reach the container without passing through the authentication
+  sidecar, since `unauthenticatedClientAction` is `Return401` and only the ACS
+  callback path is excluded (low priority, small effort).
+  * Source: `infra/modules/container-app.bicep`
+  * Dependency: Step 5.2
+

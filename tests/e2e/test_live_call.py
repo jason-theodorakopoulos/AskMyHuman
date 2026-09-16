@@ -5,8 +5,10 @@ default pytest selection by the ``live`` marker and additionally require
 ``RUN_LIVE_AZURE_TESTS=1``, so collection stays safe without Azure credentials.
 """
 
+import asyncio
 import os
 from collections.abc import AsyncIterator
+from contextlib import suppress
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
@@ -16,6 +18,7 @@ from azure.identity import ClientSecretCredential
 
 from ask_my_human.application.maintenance import RequestMaintenance
 from ask_my_human.contracts import Outcome, RequestStatus
+from ask_my_human.domain.models import HumanRequest, RequestState
 from ask_my_human.persistence.pool import PostgresPool
 from ask_my_human.persistence.repository import PostgresRequestRepository
 
@@ -28,6 +31,8 @@ pytestmark = [
 ]
 
 _REQUEST_TIMEOUT_SECONDS = 240.0
+_SMOKE_TIMEOUT_SECONDS = 30.0
+_CANCELLATION_DELAY_SECONDS = 10.0
 _RETENTION_HOURS = 24.0
 
 
@@ -194,3 +199,109 @@ async def test_live_telemetry_records_identifiers_but_no_prompt_content(
 
     assert row_count(request_id) > 0, "Telemetry must correlate the request identifier."
     assert row_count(sentinel) == 0, "Telemetry must stay content-free."
+
+
+async def test_live_unauthenticated_request_is_rejected() -> None:
+    """The deployed ingress must reject an agent request that carries no token."""
+    async with httpx.AsyncClient(
+        base_url=_required_env("LIVE_BASE_URL"), timeout=_SMOKE_TIMEOUT_SECONDS
+    ) as anonymous:
+        response = await anonymous.post(
+            "/v1/requests",
+            json={"kind": "approval", "prompt": "unauthenticated", "idempotencyKey": str(uuid4())},
+        )
+
+    assert response.status_code in {401, 403}, response.text
+
+
+async def test_live_invalid_callback_token_is_rejected() -> None:
+    """The ACS callback path is excluded from ingress auth and validates its own token."""
+    async with httpx.AsyncClient(
+        base_url=_required_env("LIVE_BASE_URL"), timeout=_SMOKE_TIMEOUT_SECONDS
+    ) as anonymous:
+        response = await anonymous.post(
+            "/v1/callbacks/acs",
+            headers={"Authorization": "Bea" + "rer invalid-callback-token"},
+            json=[],
+        )
+
+    assert response.status_code == 401, response.text
+
+
+async def test_live_unanswered_call_expires_without_a_response(
+    client: httpx.AsyncClient, repository: PostgresRequestRepository
+) -> None:
+    """Let this call ring out; do not answer it."""
+    response = await _ask(
+        client, "Live test: do not answer this call.", kind="approval", key=uuid4()
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["status"] == RequestStatus.EXPIRED.value
+    assert body["outcome"] in {
+        Outcome.NO_ANSWER.value,
+        Outcome.BUSY.value,
+        Outcome.DECLINED.value,
+        Outcome.DISCONNECTED.value,
+        Outcome.DEADLINE_EXCEEDED.value,
+    }
+    stored = await repository.get(UUID(body["requestId"]))
+    assert stored is not None
+    assert stored.result is not None
+    assert stored.result.status is RequestStatus.EXPIRED
+
+
+async def test_live_client_cancellation_ends_the_request_exactly_once(
+    client: httpx.AsyncClient, repository: PostgresRequestRepository
+) -> None:
+    """Do not answer this call; the initiating client disconnects first."""
+    key = uuid4()
+    request = asyncio.create_task(
+        _ask(client, "Live test: cancelled by the caller.", kind="approval", key=key)
+    )
+    await asyncio.sleep(_CANCELLATION_DELAY_SECONDS)
+    request.cancel()
+    with suppress(asyncio.CancelledError, httpx.HTTPError):
+        await request
+
+    stored = await _await_terminal(repository, key)
+    assert stored.result is not None
+    assert stored.result.status is RequestStatus.EXPIRED
+
+
+async def test_live_one_call_and_one_terminal_row_per_idempotency_key(
+    client: httpx.AsyncClient, repository: PostgresRequestRepository, pool: PostgresPool
+) -> None:
+    """Answer the phone once when this test rings."""
+    key = uuid4()
+    prompt = "Live test: approve exactly once."
+
+    first = await _ask(client, prompt, kind="approval", key=key)
+    second = await _ask(client, prompt, kind="approval", key=key)
+
+    assert first.status_code == 200, first.text
+    assert second.json() == first.json()
+    request_id = UUID(first.json()["requestId"])
+    await _assert_stored_terminal(repository, request_id)
+
+    async with pool.pool.connection() as connection:
+        cursor = await connection.execute(
+            "SELECT count(*) FROM human_requests WHERE idempotency_key = %s", (key,)
+        )
+        row = await cursor.fetchone()
+
+    assert row is not None
+    assert row[0] == 1, "An idempotency key must never create a second stored request."
+
+
+async def _await_terminal(
+    repository: PostgresRequestRepository, request_id: UUID
+) -> "HumanRequest":
+    deadline = datetime.now(tz=UTC) + timedelta(seconds=_REQUEST_TIMEOUT_SECONDS)
+    while datetime.now(tz=UTC) < deadline:
+        stored = await repository.get(request_id)
+        if stored is not None and stored.state is not RequestState.PENDING:
+            return stored
+        await asyncio.sleep(1)
+    raise AssertionError("The request never reached a terminal state.")

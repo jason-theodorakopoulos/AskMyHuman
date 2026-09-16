@@ -152,6 +152,43 @@ Publication status:
 * All seven Phase 1B Bicep and support modules compiled with Bicep CLI 0.47.16 with zero warnings and zero errors.
 * Workspace diagnostics and `git diff --check` passed.
 
+## Phase 2 Changes
+
+### Step 2.1: ASGI Composition
+
+* Added `src/ask_my_human/main.py` as the sole ASGI composition root that builds settings, telemetry, the ACS client, the PostgreSQL pool, the repository, the application service, the maintenance loops, the HTTP routers, and the MCP application in one process.
+* Added lifespan-owned resources with late-bound use-case, callback-validator, and pool slots so routers that are constructed before startup fail closed instead of importing runtime state.
+* Added a `RuntimeFactory` seam with `create_azure_runtime` as the default so the composed application is testable with fakes.
+* Added `tests/integration/test_asgi_app.py` and `tests/unit/test_main.py`.
+
+## Phase 5 Changes
+
+### Step 5.1 And Step 5.2: Deployment Automation
+
+* Added `scripts/deploy_azure.sh` with `what-if`, `deploy`, and `verify` subcommands.
+* `deploy` builds an image tagged with the full Git commit SHA, deploys the resource-group Bicep template, verifies that the ready revision runs that exact image and is active, running, and healthy, and then asserts that `/v1/requests`, `/mcp`, and the ACS callback all reject unauthenticated callers.
+
+### Step 5.3: Live Validation Matrix
+
+* Extended `tests/e2e/test_live_call.py` with unauthenticated-request rejection, invalid callback-token rejection, unanswered-call expiry, client-cancellation exactly-once termination, and one-call-one-terminal-row idempotency scenarios.
+* All live scenarios remain gated behind the `live` marker and `RUN_LIVE_AZURE_TESTS=1`.
+
+### Deployment Defects Found And Fixed While Running The Container
+
+* Fixed allow-list environment parsing. `AUTHORIZED_AGENT_APP_IDS` and `MCP_ALLOWED_HOSTS` were JSON-decoded by pydantic-settings before validation, so the documented comma-separated deployment values raised a settings error. Both fields now use `NoDecode`.
+* Added the `aiohttp` dependency. `DefaultAzureCredential` and the async `CallAutomationClient` require an async transport that the image did not contain.
+* Fixed database migrations in the container. `migrations/env.py` now falls back to `DATABASE_URL` and normalizes the driver, and `alembic.ini` no longer hardcodes a localhost URL, so container startup no longer fails in `alembic upgrade head`.
+* Fixed the MCP transport-security host check. The MCP server compares the full `Host` header including the port, so each allowed host is now expanded to both `host` and `host:*` with matching origins.
+
+## Phase 5 Validation
+
+* Generated schema drift check passed.
+* Ruff formatting and lint passed for 76 Python files.
+* Non-live suite passed with 174 tests at 92.31% coverage against the 90% gate.
+* `docker compose config` passed, the image built, and the running container served health probes, OAuth protected-resource metadata, authenticated-only `/v1/requests`, token-checked ACS callbacks, and a full MCP initialize and tools-list exchange.
+* Every Bicep template and every environment parameter file compiled.
+* Steps 5.1, 5.2, and 5.3 were not executed. They require a real subscription, registry, ACS number, and Entra registrations that are unavailable in this environment, and Step 5.3 places billable phone calls.
+
 ## Additional Or Deviating Changes
 
 * Extended internal domain and repository contracts for durable technical-error replay after process replacement.
@@ -165,4 +202,4 @@ Publication status:
 
 ## Release Summary
 
-Phase 1A delivers all independently testable application implementations for persistence, orchestration, telephony, security, HTTP, health, OAuth metadata, MCP, and observability. Phase 1B delivers all independently compilable public-endpoint Azure infrastructure modules. Phase 2 composition remains intentionally unimplemented.
+Phase 1A delivers all independently testable application implementations for persistence, orchestration, telephony, security, HTTP, health, OAuth metadata, MCP, and observability. Phase 1B delivers all independently compilable public-endpoint Azure infrastructure modules. Phase 2 composition is now implemented, the composed container has been verified end to end locally, and Phase 5 supplies repeatable deployment and live-validation automation. Phase 5 execution remains blocked on tenant-owned Azure inputs.
