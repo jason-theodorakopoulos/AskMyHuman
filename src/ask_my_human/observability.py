@@ -10,10 +10,13 @@ from threading import Lock
 from uuid import UUID, uuid4
 
 from azure.monitor.opentelemetry import configure_azure_monitor
+from fastapi import FastAPI
 from opentelemetry import metrics, trace
 from opentelemetry.metrics import CallbackOptions, Meter, Observation
 from opentelemetry.sdk.resources import Resource
-from opentelemetry.trace import Span, Status, StatusCode, Tracer
+from opentelemetry.trace import Span, SpanKind, Status, StatusCode, Tracer
+from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from ask_my_human.application.ports import TelemetryOperation
 from ask_my_human.contracts import Outcome, RequestKind, RequestStatus
@@ -48,7 +51,60 @@ _OPERATION_SPANS = {
     TelemetryOperation.ASK: SpanName.REQUEST,
     TelemetryOperation.CALLBACK: SpanName.ACS_CALLBACK,
     TelemetryOperation.REPOSITORY: SpanName.POSTGRES,
+    TelemetryOperation.CREATE_CALL: SpanName.ACS_CREATE_CALL,
+    TelemetryOperation.RECOGNIZE: SpanName.ACS_RECOGNIZE,
 }
+
+
+class ContentFreeHttpTelemetry:
+    def __init__(self, app: ASGIApp, *, tracer: Tracer) -> None:
+        self.app = app
+        self.tracer = tracer
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        method = scope.get("method", "OTHER")
+        if method not in {"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"}:
+            method = "OTHER"
+        carrier = {
+            key.decode("ascii"): value.decode("ascii", errors="ignore")
+            for key, value in scope.get("headers", [])
+            if key == b"traceparent"
+        }
+        with self.tracer.start_as_current_span(
+            "askhuman.http",
+            kind=SpanKind.SERVER,
+            context=TraceContextTextMapPropagator().extract(carrier),
+            attributes={"http.request.method": method},
+            record_exception=False,
+            set_status_on_exception=False,
+        ) as span:
+
+            async def send_response(message: Message) -> None:
+                if message["type"] == "http.response.start":
+                    status_code = message["status"]
+                    span.set_attribute("http.response.status_code", status_code)
+                    if status_code >= 500:
+                        span.set_status(Status(StatusCode.ERROR))
+                await send(message)
+
+            try:
+                await self.app(scope, receive, send_response)
+            except Exception:
+                span.set_attribute("http.response.status_code", 500)
+                span.set_status(Status(StatusCode.ERROR))
+                raise
+
+
+def instrument_app(app: FastAPI, *, tracer: Tracer | None = None) -> None:
+    if not getattr(app.state, "content_free_telemetry", False):
+        app.add_middleware(
+            ContentFreeHttpTelemetry,
+            tracer=tracer or trace.get_tracer(INSTRUMENTATION_NAME),
+        )
+        app.state.content_free_telemetry = True
 
 
 class AzureMonitorTelemetry:
@@ -127,7 +183,7 @@ class AzureMonitorTelemetry:
     @contextmanager
     def span(
         self,
-        name: SpanName,
+        operation: TelemetryOperation | SpanName,
         *,
         request_id: UUID,
         kind: RequestKind | None = None,
@@ -156,6 +212,9 @@ class AzureMonitorTelemetry:
             if isinstance(value, (str, int, bool))
         )
 
+        name = (
+            _OPERATION_SPANS[operation] if isinstance(operation, TelemetryOperation) else operation
+        )
         with self._tracer.start_as_current_span(
             name.value,
             attributes=attributes,
@@ -167,6 +226,31 @@ class AzureMonitorTelemetry:
             except Exception:
                 current_span.set_status(Status(StatusCode.ERROR))
                 raise
+
+    def dependency_failed(
+        self,
+        operation: TelemetryOperation,
+        *,
+        acs_code: int | None = None,
+        error_code: ErrorCode | None = None,
+    ) -> None:
+        mapped_operation = {
+            TelemetryOperation.REPOSITORY: DependencyOperation.REPLAY_READ,
+            TelemetryOperation.CREATE_CALL: DependencyOperation.CREATE_CALL,
+            TelemetryOperation.RECOGNIZE: DependencyOperation.RECOGNIZE,
+            TelemetryOperation.CALLBACK: DependencyOperation.CALLBACK,
+            TelemetryOperation.ASK: DependencyOperation.CALLBACK,
+        }[operation]
+        self.record_dependency_failure(
+            dependency=(
+                Dependency.POSTGRES
+                if operation is TelemetryOperation.REPOSITORY
+                else Dependency.ACS
+            ),
+            operation=mapped_operation,
+            acs_code=acs_code,
+            error_code=error_code,
+        )
 
     def record_dependency_failure(
         self,
@@ -212,9 +296,24 @@ def configure_observability(*, connection_string: str | None = None) -> AzureMon
         configure_azure_monitor(
             connection_string=resolved_connection_string,
             instrumentation_options={
-                "fastapi": {"enabled": True},
-                "psycopg2": {"enabled": False},
+                name: {"enabled": False}
+                for name in (
+                    "azure_sdk",
+                    "django",
+                    "fastapi",
+                    "flask",
+                    "httpx",
+                    "httpx2",
+                    "psycopg2",
+                    "requests",
+                    "urllib",
+                    "urllib3",
+                )
             },
+            disable_azure_core_tracing=True,
+            disable_logging=True,
+            enable_live_metrics=False,
+            enable_performance_counters=False,
             resource=Resource.create({"service.name": "ask-my-human"}),
         )
     return AzureMonitorTelemetry()

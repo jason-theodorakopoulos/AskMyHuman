@@ -21,7 +21,8 @@ class Settings(BaseSettings):
     acs_source_phone_number: SecretStr
     my_mobile_number: SecretStr
     azure_ai_endpoint: AnyHttpUrl
-    acs_callback_audience: AnyHttpUrl
+    acs_callback_url: AnyHttpUrl
+    acs_callback_audience: str
     entra_tenant_id: str
     entra_client_id: str
     # NoDecode keeps comma-separated environment values out of the JSON decoder.
@@ -33,6 +34,27 @@ class Settings(BaseSettings):
     work_cutoff_seconds: int = Field(default=205, gt=0)
     poll_interval_milliseconds: int = Field(default=500, gt=0)
     retention_hours: int = Field(default=24, gt=0)
+
+    @field_validator("acs_callback_url")
+    @classmethod
+    def validate_callback_url(cls, value: AnyHttpUrl) -> AnyHttpUrl:
+        if (
+            value.scheme != "https"
+            or value.path != "/v1/callbacks/acs"
+            or value.username is not None
+            or value.password is not None
+            or value.query is not None
+            or value.fragment is not None
+        ):
+            raise ValueError("acs_callback_url must be the full HTTPS callback endpoint")
+        return value
+
+    @field_validator("acs_callback_audience")
+    @classmethod
+    def validate_callback_audience(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("acs_callback_audience must be a nonblank ACS resource identifier")
+        return value.strip()
 
     @field_validator("authorized_agent_app_ids", "mcp_allowed_hosts", mode="before")
     @classmethod

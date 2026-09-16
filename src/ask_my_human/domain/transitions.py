@@ -1,6 +1,6 @@
 """Terminal state transition rules."""
 
-from ask_my_human.contracts import AskHumanResult, Outcome, RequestStatus
+from ask_my_human.contracts import AskHumanResult, Outcome, RequestKind, RequestStatus
 from ask_my_human.domain.models import CallEvent, CallEventType, HumanRequest, RequestState
 
 _RESPONDED = {
@@ -43,5 +43,14 @@ def complete(request: HumanRequest, event: CallEvent) -> AskHumanResult | None:
     if event.request_id != request.request_id:
         raise ValueError("event does not belong to request")
     if request.state is not RequestState.PENDING:
+        return None
+    if event.event_type not in _RESPONDED and event.event_type not in _EXPIRED:
+        return None
+    if request.request.kind is RequestKind.APPROVAL and event.event_type is CallEventType.ANSWERED:
+        return None
+    if request.request.kind is RequestKind.INPUT and event.event_type in {
+        CallEventType.APPROVED,
+        CallEventType.REJECTED,
+    }:
         return None
     return result_for_event(event)

@@ -1,5 +1,6 @@
 """Process liveness and dependency readiness routes."""
 
+from collections.abc import Callable
 from typing import Protocol
 
 from fastapi import APIRouter, Response, status
@@ -20,13 +21,17 @@ async def liveness() -> dict[str, str]:
     return {"status": "ok"}
 
 
-def create_readiness_router(settings: Settings | None, pool: PoolState) -> APIRouter:
+def create_readiness_router(
+    settings: Settings | None,
+    pool: PoolState,
+    maintenance_ready: Callable[[], bool] = lambda: True,
+) -> APIRouter:
     router = APIRouter()
 
     @router.get("/health/ready")
     async def readiness(response: Response) -> dict[str, str]:
         try:
-            ready = settings is not None and not pool.closed
+            ready = settings is not None and not pool.closed and maintenance_ready()
         except Exception:
             ready = False
 

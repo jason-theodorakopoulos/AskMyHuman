@@ -1,5 +1,9 @@
 """Async Azure Communication Services Call Automation gateway."""
 
+import asyncio
+from contextlib import suppress
+from uuid import UUID, uuid4
+
 from azure.communication.callautomation import (
     DtmfTone,
     PhoneNumberIdentifier,
@@ -11,7 +15,7 @@ from azure.communication.callautomation.aio import CallAutomationClient
 
 from ask_my_human.config import Settings
 from ask_my_human.contracts import RequestKind
-from ask_my_human.domain.models import HumanRequest
+from ask_my_human.domain.models import CallEvent, CallEventType, HumanRequest
 
 _APPROVE_LABEL = "approve"
 _REJECT_LABEL = "reject"
@@ -30,7 +34,11 @@ class AcsCallAutomationGateway:
         locale: str,
         voice_name: str,
         enable_dtmf_fallback: bool = True,
+        playback_timeout_seconds: float = 1.5,
+        hangup_timeout_seconds: float = 1,
     ) -> None:
+        if playback_timeout_seconds <= 0 or hangup_timeout_seconds <= 0:
+            raise ValueError("playback and hangup timeouts must be positive")
         self._client = client
         self._callback_url = callback_url
         self._source = PhoneNumberIdentifier(source_phone_number)
@@ -39,12 +47,15 @@ class AcsCallAutomationGateway:
         self._locale = locale
         self._voice_name = voice_name
         self._enable_dtmf_fallback = enable_dtmf_fallback
+        self._playback_timeout = playback_timeout_seconds
+        self._hangup_timeout = hangup_timeout_seconds
+        self._playbacks: dict[str, tuple[UUID, asyncio.Event]] = {}
 
     @classmethod
     def from_settings(
         cls, client: CallAutomationClient, settings: Settings
     ) -> "AcsCallAutomationGateway":
-        callback_url = f"{str(settings.acs_callback_audience).rstrip('/')}/v1/callbacks/acs"
+        callback_url = str(settings.acs_callback_url)
         return cls(
             client,
             callback_url=callback_url,
@@ -97,15 +108,46 @@ class AcsCallAutomationGateway:
             speech_language=self._locale,
         )
 
-    async def acknowledge_and_hang_up(self, call_id: str) -> None:
+    async def acknowledge_and_hang_up(
+        self,
+        call_id: str,
+        *,
+        request_id: UUID | None = None,
+    ) -> None:
+        if call_id in self._playbacks:
+            return
+        correlation = request_id or uuid4()
+        completed = asyncio.Event()
+        self._playbacks[call_id] = (correlation, completed)
         connection = self._client.get_call_connection(call_id)
         acknowledgement = TextSource(
             text=_ACKNOWLEDGEMENT,
             source_locale=self._locale,
             voice_name=self._voice_name,
         )
-        await connection.play_media(acknowledgement, "all")
-        await connection.hang_up(True)
+        try:
+            with suppress(Exception):
+                async with asyncio.timeout(self._playback_timeout):
+                    await connection.play_media(
+                        acknowledgement,
+                        "all",
+                        operation_context=str(correlation),
+                    )
+                    await completed.wait()
+        finally:
+            self._playbacks.pop(call_id, None)
+            async with asyncio.timeout(self._hangup_timeout):
+                await connection.hang_up(True)
+
+    async def handle_playback_event(self, event: CallEvent) -> None:
+        if event.call_id is None or event.event_type not in {
+            CallEventType.PLAY_COMPLETED,
+            CallEventType.PLAY_FAILED,
+        }:
+            return
+        playback = self._playbacks.get(event.call_id)
+        if playback is not None and playback[0] == event.request_id:
+            playback[1].set()
 
     async def hang_up(self, call_id: str) -> None:
         connection = self._client.get_call_connection(call_id)

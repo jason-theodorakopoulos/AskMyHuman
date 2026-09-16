@@ -1,12 +1,14 @@
-<!-- markdownlint-disable-file -->
-# Changes Log: AskMyHuman Tight MVP
+---
+title: AskMyHuman Tight MVP Changes Log
+description: Implementation history, review corrections, and outstanding release evidence for the tight MVP.
+---
 
 ## Metadata
 
 * Date: 2026-09-15
 * Related plan: `.copilot-tracking/plans/2026-09-15/ask-my-human-tight-mvp-plan.instructions.md`
 * Implementation commit: `9322aa6` (merge of Phase 0 implementation)
-* Scope implemented: Implementation Phases 0, 1A, 1B, and 2
+* Scope implemented: Implementation Phases 0, 1A, and 1B
 
 ## Phase 0 Changes
 
@@ -152,44 +154,12 @@ Publication status:
 * All seven Phase 1B Bicep and support modules compiled with Bicep CLI 0.47.16 with zero warnings and zero errors.
 * Workspace diagnostics and `git diff --check` passed.
 
-## Phase 2 Changes
-
-### Step 2.1: ASGI Application Composition
-
-* Added `src/ask_my_human/main.py` as the sole composition root for settings, telemetry, Azure credentials, the ACS client, the PostgreSQL pool, the repository, the service, maintenance loops, HTTP routers, and the MCP transport.
-* Added one FastAPI lifespan that registers client cleanup, opens and waits for PostgreSQL, enters the MCP session manager, starts the expiry and purge loops, and closes every resource on shutdown even when one client fails.
-* Registered liveness, readiness, OAuth metadata, request, and callback routes before mounting the MCP application at `/` so `/mcp` never shadows `/v1` or metadata routes.
-* Added `tests/integration/test_asgi_app.py` covering readiness before and during the lifespan, liveness, OAuth metadata, authenticated and unauthenticated request handling, callback token validation and event dispatch, the mounted MCP initialize handshake, maintenance loop startup and shutdown, and callback payload parsing.
-* Modified `src/ask_my_human/config.py` so comma-separated list settings bypass the pydantic-settings JSON decoder.
-* Modified `pyproject.toml` and `uv.lock` to add the `aiohttp` runtime dependency required by the asynchronous Azure SDK transport.
-
-### Step 2.2: Bicep Deployment Composition
-
-* Verified the existing `infra/main.bicep` composition and `infra/environments/dev.bicepparam` bindings build with the Bicep CLI and expose no secure value as an output.
-
-## Phase 2 Validation
-
-* `uv run pytest` passed with 158 tests, including the new ASGI composition suite.
-* `uv run mypy src/ask_my_human/main.py tests/integration/test_asgi_app.py` reported no errors for the new files.
-* `uv run ruff format --check .` and `uv run ruff check .` passed.
-* `uv lock --check` and `uv run python scripts/export_schemas.py --check` passed.
-* `az bicep build --file infra/main.bicep` and `az bicep build-params --file infra/environments/dev.bicepparam` succeeded.
-* The deployed composition was smoke-checked by importing `ask_my_human.main:app` with the documented environment variables.
-
 ## Additional Or Deviating Changes
 
 * Extended internal domain and repository contracts for durable technical-error replay after process replacement.
   * Public request, result, and execution-error wire schemas remain unchanged.
 * Added two nested role-assignment support modules.
   * Bicep requires a nested deployment when assigning roles to existing ACS and ACR resources in another resource group or subscription.
-* Added `aiohttp` as a runtime dependency during Phase 2 integration.
-  * The asynchronous Azure Identity and Call Automation clients require the aiohttp transport, and `azure-core` 1.41 ships no httpx-based asynchronous transport.
-  * The manifest change was made once and `uv.lock` was regenerated rather than hand-merged.
-* Annotated the comma-separated settings with `NoDecode` in `src/ask_my_human/config.py`.
-  * pydantic-settings otherwise JSON-decodes sequence fields before the existing validator runs, so the deployed comma-separated environment values failed to load.
-  * The public setting names, types, and validation rules are unchanged.
-* Exposed the deployed `app` object through a module-level `__getattr__` in `src/ask_my_human/main.py`.
-  * This keeps the `ask_my_human.main:app` Uvicorn import string from the container image while letting tests import the module without a configured environment.
 * Replaced private VNet integration with public service endpoints for the tight MVP.
   * Removed `infra/modules/network.bicep`, subnet inputs, and private DNS inputs.
   * PostgreSQL permits Azure-hosted clients through the documented `0.0.0.0` Azure-services rule, not an unrestricted internet address range.
@@ -197,124 +167,104 @@ Publication status:
 
 ## Release Summary
 
-### Step 2.1 Note: Composition Root Merge
+Phase 1A delivers all independently testable application implementations for persistence, orchestration, telephony, security, HTTP, health, OAuth metadata, MCP, and observability. Phase 1B delivers all independently compilable public-endpoint Azure infrastructure modules. This historical summary predates the integration and release files now present; their existence does not establish passing release gates.
 
-Step 2.1 (the ASGI composition root) was independently implemented on a
-parallel branch (`copilot/implement-asgi-application-bicep`) and merged into
-`main` before this branch's Phase 4 gate ran. That implementation was adopted
-here in place of this branch's own draft, including its
-`AsyncExitStack`-based lifespan, `ApplicationComponents` composition, and
-`tests/integration/test_asgi_app.py` fake/spy-based coverage (no Docker
-dependency). This branch's `aiohttp>=3.14.3,<4` pin (above a GitHub Advisory
-Database chunked-response-parsing vulnerability) was kept over the
-independent branch's looser `aiohttp>=3.14,<4`.
+## Phase 5 Resumption: 2026-09-16
 
-### Isolated Defects Fixed During Composition And Gate Execution
+* User authorized Phase 5 implementation, prerequisite corrections, and Azure CLI authentication using the ignored local environment file, with low-cost Azure tiers where compatible.
+* Existing Phase 2 composition, Phase 3 image/CI/live harness, Phase 4 documentation, and Phase 5 deployment helper require validation and reconciliation with the 2026-09-16 review findings.
+* No deployment, what-if review, paid call, retention-policy approval, or target-client acceptance is claimed at resumption.
+* Phase 5.1 starts with Azure inventory and external-input verification; prerequisite validation can proceed independently without Azure mutations or paid calls.
 
-Both the independent composition branch and this branch's original draft
-discovered and fixed the same pre-existing defects, confirming they were
-real:
+## Review Inventory: 2026-09-16
 
-* `src/ask_my_human/config.py` — `authorized_agent_app_ids` and
-  `mcp_allowed_hosts` are `tuple[str, ...]` fields with a `split_csv` before
-  validator, but `pydantic-settings`' `EnvSettingsSource` attempts JSON
-  decoding of non-`str` field values before validators run, so any real
-  environment-variable value (a bare UUID or hostname, as set in
-  `compose.yaml` and `.env.example`) crashed `Settings()` with
-  `SettingsError`. Annotated both fields with `pydantic_settings.NoDecode` so
-  the raw string reaches `split_csv` unchanged.
-* `src/ask_my_human/observability.py` — `configure_observability()`
-  unconditionally called `configure_azure_monitor(...)`, which raises
-  `ValueError: Instrumentation key cannot be none or empty` whenever no
-  Application Insights connection string is available (the case for local
-  Docker Compose and every test environment). `configure_observability` now
-  resolves a connection string from the explicit argument or the
-  `APPLICATIONINSIGHTS_CONNECTION_STRING` environment variable and skips
-  exporter configuration entirely when neither is set, still returning an
-  `AzureMonitorTelemetry` handle for content-free spans/metrics.
-* `migrations/env.py` — Alembic's `env.py` never read `DATABASE_URL` and
-  always connected using the hardcoded `alembic.ini` default
-  (`postgresql+psycopg://localhost/ask_my_human`), so `alembic upgrade head`
-  in the container entrypoint silently ignored the configured database and
-  failed to connect in `docker compose up`. `env.py` now overrides
-  `sqlalchemy.url` from `DATABASE_URL` when present, normalizing both the
-  `postgresql://` and legacy `postgres://` schemes to `postgresql+psycopg://`
-  for SQLAlchemy's dialect loader.
-* 36 pre-existing `mypy --strict` errors across eight unit/contract/integration
-  test files (untyped generator fixtures, loosely typed `Settings(**dict)`
-  construction, string literals used where enum members are required,
-  `SpanExporter.export` parameter variance, and similar strict-mode-only
-  issues) were corrected without changing any test's asserted behavior.
+The metadata and validation results above preserve the historical record. The
+following inventory supplements that history without restoring removed success
+claims or marking whole phases complete. Review repairs are ongoing; final
+checks will be recorded in the review log against the final repository state.
 
-## Phase 4 Changes: Local Validation And Documentation
+### Phase 2 Integration Present
 
-### Step 4.1: Pre-Documentation Local Merge Gate
+* `src/ask_my_human/main.py` contains ASGI composition, dependency lifecycle,
+  maintenance tasks, HTTP routes, and mounted MCP transport.
+* `tests/integration/test_asgi_app.py` provides composition coverage using
+  fakes and spies; it is not an application-container startup test.
+* `infra/main.bicep` and `infra/environments/dev.bicepparam` compose the Azure
+  modules and environment bindings. Their presence is not deployed evidence.
+* Integration support includes comma-separated settings decoding, async Azure
+  transport dependencies, optional telemetry bootstrap, and environment-driven
+  migrations. Current correctness and final checks remain with their owners.
 
-All commands passed against the fixes above:
+### Phase 3 Release Code Present
 
-* `uv lock --check`, `uv sync --frozen --all-groups`
-* `uv run python scripts/export_schemas.py --check`
-* `uv run ruff format --check .`, `uv run ruff check .`
-* `uv run mypy src tests` — 54 source files, zero errors
-* `uv run pytest -m "not live" --cov=ask_my_human --cov-fail-under=90` — 156
-  passed, 90.24% coverage
-* `docker compose config --quiet`
-* `docker build --tag ask-my-human:mvp .`
-* `az bicep build --file infra/main.bicep`
-* Manual smoke test: `docker compose up --build` brought up PostgreSQL and the
-  application container; `alembic upgrade head` ran the migration against the
-  compose network's `db` host, and `/health/live` and `/health/ready` both
-  returned `200`.
+* `Dockerfile` provides the application image and migration-before-server
+  startup path; `compose.yaml` provides PostgreSQL and placeholder app startup
+  configuration with loopback-only published ports.
+* `.github/workflows/ci.yml` defines local checks and image build validation.
+  Building the image does not demonstrate its startup, migration, and health
+  behavior; a bounded non-live container smoke result remains required.
+* `tests/e2e/test_live_call.py` provides an opt-in live harness. A test module's
+  presence, collection, or default skip does not establish live acceptance.
 
-### Step 4.2: Documentation
+### Phase 4 Documentation And Validation Partial
 
-* Rewrote `README.md` with the verified one-turn behavior, request/result
-  examples, architecture (including the DD-01 Play-and-Recognize-replaces-
-  Voice-Live decision in the architecture section), local setup and
-  validation commands, configuration reference, Azure prerequisites and
-  deployment flow, the 210-second deadline, and explicit exclusions. No
-  secret value or tenant-specific identifier is documented.
-* `.gitignore` was not changed; no uncovered local artifact was produced by
-  validation.
+* Corrected `README.md` to describe `expired/deadline_exceeded` as an HTTP 200
+  terminal result and successful MCP result, with no unconditional delivery
+  promise after cancellation or connection loss.
+* Distinguished subject-scoped pending joins and terminal replay from changed
+  payload conflict, distinct-request 429 admission, and unsupported asynchronous
+  resume. Joining does not create another call or reset the deadline.
+* Added Markdown frontmatter, valid JSON and text fences, navigable README
+  planning references, and required punctuation/style corrections.
+* Separated host settings from literal placeholder Compose configuration,
+  identified the telemetry environment-read exception, and documented the
+  supported 210/205-second timing policy as configurable defaults.
+* Documented the required split between `ACS_CALLBACK_URL` (public HTTPS full
+  `/v1/callbacks/acs` endpoint) and `ACS_CALLBACK_AUDIENCE` (immutable ACS
+  resource ID string). Source and deployment binding repairs remain with the
+  implementation owners; this entry does not assert their validation passed.
+* Documented the post-edit complete local gate plus editor diagnostics and
+  `git diff --check` Markdown fallback without adding a Markdown toolchain.
+* Step 4.2's literal every-command-success criterion conflicts with deployment
+  depending on Phase 4. Plan/release owners must approve reconciliation, or
+  Phase 4 remains partial. No plan criteria were changed by this repair.
 
-### Step 4.3: Post-Documentation Revalidation
+### Phase 5 Deployment And Live Gates Partial
 
-The complete local merge gate (Step 4.1 command list) was rerun after merging
-`main`'s composition root and README update, and passed unchanged. No
-repository Markdown linter is configured; `git diff --check` on `README.md`
-reported no whitespace errors.
+* `scripts/deploy_azure.sh` exists as deployment assistance, not proof that the
+  whole release flow ran. Its reviewed action syntax and required inputs must
+  be inspected after concurrent repairs; default help, explicit approvals,
+  immutable digest/revision checks, and authenticated health checks are under
+  review. No automatic paid calls are authorized.
+* README operator requirements now include `AskHuman.Invoke`, authorized
+  client IDs, target MCP timeout of at least 225 seconds and cancellation,
+  retention approval, reviewed what-if, exact image/revision evidence, and
+  authenticated readiness/liveness and rejection checks.
+* Added last-known-good rollback guidance and first-deployment blocker handling
+  with sanitized diagnostics, bounded resource retention, and approved cleanup.
+* The live harness requires outcome-specific evidence and remaining scenario
+  coverage. HTTP tests and one database row cannot substitute for live MCP
+  behavior or provider-side one-call evidence. Review assertion repairs do not
+  establish that live scenarios ran.
+* Required evidence includes every availability/decision outcome, join/replay,
+  duplicate callbacks, MCP timing/cancellation, all sensitive telemetry sentinel
+  categories with bounded ingestion, and production-path retention purge.
+  Approved carrier limitations must be explicit; skipped queries are not passes.
+* Tenant inputs, operator approvals, deployment, and paid live evidence remain
+  external gates. No secret reads, Azure mutations, or paid calls were performed
+  by this documentation repair.
 
-## Phase 5 Changes: Azure Deployment And Live Validation
+### Phase 6 Final Handoff Pending
 
-### Step 5.1 And Step 5.2: Deployment Automation
+* The complete final-state local gate and live-evidence review remain required
+  after all owner repairs; historical passes are not final-state results.
+* Final checks, unresolved blockers, owners, and next actions will be recorded
+  in the review log. No final pass or release-ready status is claimed here.
 
-* Added `scripts/deploy_azure.sh` with `what-if`, `deploy`, and `verify` subcommands.
-* `deploy` builds an image tagged with the full Git commit SHA, deploys the resource-group Bicep template, verifies that the ready revision runs that exact image and is active, running, and answering the liveness probe, and then asserts that `/v1/requests`, `/mcp`, and the ACS callback all reject unauthenticated callers before any billable call can be placed.
-* `verify` resolves the container app from the resource group, so it needs only `AZURE_RESOURCE_GROUP` and works from any commit.
+### Review Evidence And Open Decisions
 
-### Step 5.3: Live Validation Matrix
-
-* Extended `tests/e2e/test_live_call.py` with unauthenticated-request rejection, invalid callback-token rejection, unanswered-call expiry, client-cancellation exactly-once termination, and one-call-one-terminal-row idempotency scenarios.
-* All live scenarios remain gated behind the `live` marker and `RUN_LIVE_AZURE_TESTS=1`.
-
-### Step 4.2 Addendum: Deployment Documentation
-
-* Added a deployment and live-validation section to `README.md` covering `scripts/deploy_azure.sh` and the gated live matrix.
-
-## Phase 5 Validation
-
-* The local gate listed in Step 4.1 was rerun and passed.
-* Steps 5.1, 5.2, and 5.3 were not executed. They require a real subscription, registry, ACS number, and Entra registrations that are unavailable in this environment, and Step 5.3 places billable phone calls. The automation for each step exists and is recorded in the planning log.
-
-## Updated Release Summary
-
-Phases 0, 1A, 1B, 2, 3, and 4 are complete for the tight MVP. Phase 2
-(the ASGI composition root and its Bicep deployment) and Phase 3 (container
-image and CI) were delivered on independent branches merged into `main`;
-Phase 4 (local validation gate and documentation) is delivered by this
-branch. Phase 5 (Azure deployment and live validation) remains gated on
-tenant-specific inputs (existing ACS resource, Entra tenant/application
-registrations, target subscription/region/registry, and retention approval)
-recorded as DR-01 through DR-05 in the planning log. Phase 5's repeatable
-deployment and live-validation automation is delivered by this branch; its
-execution against a real subscription remains blocked on those inputs.
+* Finalized findings: `.copilot-tracking/reviews/rpi/2026-09-16/ask-my-human-tight-mvp-plan-005-validation.md`
+* Required gates: `.copilot-tracking/details/2026-09-15/ask-my-human-tight-mvp-details.md`, Steps 4.1 through 6.3
+* Contract evidence: `.copilot-tracking/research/2026-09-15/tight-mvp-scope-research.md`, State, Deadline, and Idempotency
+* Operator decision required: reconcile Step 4.2 command evidence with Phase 5
+  prerequisites without silently narrowing the literal acceptance criterion.

@@ -144,6 +144,77 @@ async def test_persisted_state_is_visible_from_a_new_repository(
         await restarted_pool.close()
 
 
+async def test_recognition_claim_has_one_winner_and_survives_restart(
+    repository: PostgresRequestRepository,
+    database_url: str,
+) -> None:
+    _, stored = await repository.create_or_replay(principal(), request(), HASH, expiry())
+    assert not await repository.claim_recognition(stored.request_id)
+    assert await repository.attach_call_id(stored.request_id, "call-id")
+    winners = await asyncio.gather(
+        repository.claim_recognition(stored.request_id),
+        repository.claim_recognition(stored.request_id),
+    )
+    assert sorted(winners) == [False, True]
+    pool = PostgresPool(database_url, min_size=1, max_size=1)
+    await pool.open()
+    try:
+        assert not await PostgresRequestRepository(pool.pool).claim_recognition(stored.request_id)
+    finally:
+        await pool.close()
+
+
+async def test_overdue_success_loses_to_expiry_and_returns_stale_call(
+    repository: PostgresRequestRepository,
+) -> None:
+    _, stored = await repository.create_or_replay(
+        principal(), request(), HASH, datetime.now(UTC) - timedelta(seconds=1)
+    )
+    await repository.attach_call_id(stored.request_id, "stale-call")
+    assert await repository.pending_count() == 1
+    success, expired = await asyncio.gather(
+        repository.complete_if_pending(
+            AskHumanResult(
+                requestId=stored.request_id,
+                status=RequestStatus.RESPONDED,
+                outcome=Outcome.APPROVED,
+            )
+        ),
+        repository.expire_stale_calls(datetime.now(UTC)),
+    )
+    assert not success
+    assert [item.call_id for item in expired] == ["stale-call"]
+    assert await repository.pending_count() == 0
+
+
+async def test_wrong_kind_success_is_rejected(repository: PostgresRequestRepository) -> None:
+    _, stored = await repository.create_or_replay(principal(), request(), HASH, expiry())
+    assert not await repository.complete_if_pending(
+        AskHumanResult(
+            requestId=stored.request_id,
+            status=RequestStatus.RESPONDED,
+            outcome=Outcome.ANSWERED,
+            answer="not an approval",
+        )
+    )
+
+
+async def test_success_respects_service_cutoff_before_database_expiry(
+    repository: PostgresRequestRepository,
+) -> None:
+    _, stored = await repository.create_or_replay(principal(), request(), HASH, expiry())
+    result = AskHumanResult(
+        requestId=stored.request_id,
+        status=RequestStatus.RESPONDED,
+        outcome=Outcome.APPROVED,
+    )
+    assert not await repository.complete_if_pending(
+        result,
+        before=datetime.now(UTC) - timedelta(seconds=1),
+    )
+    assert await repository.complete_if_pending(result, before=expiry())
+
+
 @pytest.mark.asyncio
 async def test_dependency_error_replays_from_a_new_service_and_repository(
     repository: PostgresRequestRepository,

@@ -1,6 +1,8 @@
 """Deterministic fakes shared by adapter and application tests."""
 
 import asyncio
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
@@ -74,9 +76,10 @@ class FakeAskHumanUseCase(AskHumanUseCase):
 
 
 class FakeRequestRepository:
-    def __init__(self) -> None:
+    def __init__(self, clock: FakeClock | None = None) -> None:
         self.requests: dict[UUID, HumanRequest] = {}
         self.admission: Admission = "created"
+        self.clock = clock
 
     async def create_or_replay(
         self,
@@ -101,7 +104,7 @@ class FakeRequestRepository:
                 else ("joined_pending" if existing.state is RequestState.PENDING else "replayed")
             )
             return admission, existing
-        now = expires_at - timedelta(seconds=210)
+        now = self.clock.now() if self.clock is not None else expires_at - timedelta(seconds=210)
         item = HumanRequest(
             request_id=request.idempotency_key,
             principal=principal,
@@ -116,17 +119,46 @@ class FakeRequestRepository:
 
     async def attach_call_id(self, request_id: UUID, call_id: str) -> bool:
         item = self.requests.get(request_id)
-        if item is None or item.call_id is not None:
+        if (
+            item is None
+            or item.state is not RequestState.PENDING
+            or item.call_id not in {None, call_id}
+        ):
             return False
         self.requests[request_id] = replace(item, call_id=call_id)
+        return True
+
+    async def claim_recognition(self, request_id: UUID) -> bool:
+        item = self.requests.get(request_id)
+        if (
+            item is None
+            or item.state is not RequestState.PENDING
+            or item.call_id is None
+            or item.recognition_started
+            or (self.clock is not None and self.clock.now() >= item.expires_at)
+        ):
+            return False
+        self.requests[request_id] = replace(item, recognition_started=True)
         return True
 
     async def get(self, request_id: UUID) -> HumanRequest | None:
         return self.requests.get(request_id)
 
-    async def complete_if_pending(self, result: AskHumanResult) -> bool:
+    async def complete_if_pending(
+        self,
+        result: AskHumanResult,
+        *,
+        before: datetime | None = None,
+    ) -> bool:
         item = self.requests.get(result.request_id)
         if item is None or item.state is not RequestState.PENDING:
+            return False
+        if result.status is RequestStatus.RESPONDED and (
+            (self.clock is not None and self.clock.now() >= item.expires_at)
+            or (self.clock is not None and before is not None and self.clock.now() >= before)
+            or (item.request.kind is RequestKind.APPROVAL and result.outcome is Outcome.ANSWERED)
+            or (item.request.kind is RequestKind.INPUT and result.outcome is not Outcome.ANSWERED)
+        ):
             return False
         state = (
             RequestState.RESPONDED
@@ -154,7 +186,10 @@ class FakeRequestRepository:
         return True
 
     async def expire_stale(self, now: datetime) -> int:
-        count = 0
+        return len(await self.expire_stale_calls(now))
+
+    async def expire_stale_calls(self, now: datetime) -> Sequence[HumanRequest]:
+        expired: list[HumanRequest] = []
         for request_id, item in list(self.requests.items()):
             if item.state is RequestState.PENDING and item.expires_at <= now:
                 result = AskHumanResult(
@@ -163,8 +198,11 @@ class FakeRequestRepository:
                     outcome=Outcome.DEADLINE_EXCEEDED,
                 )
                 self.requests[request_id] = replace(item, state=RequestState.EXPIRED, result=result)
-                count += 1
-        return count
+                expired.append(self.requests[request_id])
+        return expired
+
+    async def pending_count(self) -> int:
+        return sum(item.state is RequestState.PENDING for item in self.requests.values())
 
     async def purge_terminal(self, before: datetime) -> int:
         removable = [
@@ -183,6 +221,7 @@ class FakeCallAutomationGateway:
         self.recognitions: list[tuple[str, HumanRequest]] = []
         self.acknowledged: list[str] = []
         self.hung_up: list[str] = []
+        self.playback_events: list[CallEvent] = []
 
     async def create_call(self, request: HumanRequest) -> str:
         self.created.append(request)
@@ -191,16 +230,53 @@ class FakeCallAutomationGateway:
     async def start_recognition(self, call_id: str, request: HumanRequest) -> None:
         self.recognitions.append((call_id, request))
 
-    async def acknowledge_and_hang_up(self, call_id: str) -> None:
+    async def acknowledge_and_hang_up(
+        self,
+        call_id: str,
+        *,
+        request_id: UUID | None = None,
+    ) -> None:
         self.acknowledged.append(call_id)
 
     async def hang_up(self, call_id: str) -> None:
         self.hung_up.append(call_id)
 
+    async def handle_playback_event(self, event: CallEvent) -> None:
+        self.playback_events.append(event)
+
 
 class FakeTelemetry:
     def __init__(self) -> None:
         self.records: list[dict[str, object]] = []
+        self.spans: list[tuple[TelemetryOperation, UUID]] = []
+        self.active_spans: list[TelemetryOperation] = []
+        self.failures: list[dict[str, object]] = []
+        self.pending: list[bool] = []
+
+    @contextmanager
+    def span(
+        self, operation: TelemetryOperation, *, request_id: UUID, kind: RequestKind | None = None
+    ) -> Iterator[None]:
+        self.spans.append((operation, request_id))
+        self.active_spans.append(operation)
+        try:
+            yield
+        finally:
+            self.active_spans.remove(operation)
+
+    def dependency_failed(
+        self,
+        operation: TelemetryOperation,
+        *,
+        acs_code: int | None = None,
+        error_code: ErrorCode | None = None,
+    ) -> None:
+        self.failures.append(
+            {"operation": operation, "acs_code": acs_code, "error_code": error_code}
+        )
+
+    def set_pending(self, pending: bool) -> None:
+        self.pending.append(pending)
 
     def record(
         self,

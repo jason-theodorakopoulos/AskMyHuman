@@ -151,6 +151,7 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "azure-monitor-query" },
     { name = "cryptography" },
     { name = "jsonschema", extra = ["format"] },
     { name = "mcp", extra = ["cli"] },
@@ -184,6 +185,7 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "azure-monitor-query", specifier = ">=2,<3" },
     { name = "cryptography", specifier = ">=50,<51" },
     { name = "jsonschema", extras = ["format"], specifier = ">=4.26,<5" },
     { name = "mcp", extras = ["cli"], specifier = ">=2.2,<3" },
@@ -345,6 +347,20 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/11/e0/da0a13c996ccb246377d92dd292951531502c9201e788d2f41843526e0f1/azure_monitor_opentelemetry_exporter-1.0.0b57.tar.gz", hash = "sha256:55c9e2ff5db5406307cfe15090c749524b53769026ec588ed96611547f53d551", size = 360463, upload-time = "2026-09-03T16:54:42.162Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/09/05/4b50e2a93e2628212779d5ed96ce1fa8cb862d2bf5d87a578e66fe78b29c/azure_monitor_opentelemetry_exporter-1.0.0b57-py2.py3-none-any.whl", hash = "sha256:7489a8a8b7a9cfcbf8476808e1921f4b646dc18aa143aa24d442d344e4d067ec", size = 256677, upload-time = "2026-09-03T16:54:43.838Z" },
+]
+
+[[package]]
+name = "azure-monitor-query"
+version = "2.0.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "azure-core" },
+    { name = "isodate" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/04/c0/e5c760f38224575f1eba35c319842f2be30fab599854ba9bd0b19d39c261/azure_monitor_query-2.0.0.tar.gz", hash = "sha256:7b05f2fcac4fb67fc9f77a7d4c5d98a0f3099fb73b57c69ec1b080773994671b", size = 86658, upload-time = "2025-07-30T22:23:41.534Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/52/0c/6b08a5a1e5f0bd97cefa13c53bf47f281a9a11732d19a94a86709acbc6bd/azure_monitor_query-2.0.0-py3-none-any.whl", hash = "sha256:8f52d581271d785e12f49cd5aaa144b8910fb843db2373855a7ef94c7fc462ea", size = 71102, upload-time = "2025-07-30T22:23:43.056Z" },
 ]
 
 [[package]]

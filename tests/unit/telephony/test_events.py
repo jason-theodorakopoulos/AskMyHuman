@@ -19,7 +19,7 @@ def load_fixture(name: str) -> dict[str, Any]:
 @pytest.mark.parametrize(
     ("fixture_name", "acs_type", "domain_type", "answer", "dependency_failure"),
     [
-        ("call-connected.json", AcsEventType.CALL_CONNECTED, None, None, False),
+        ("call-connected.json", AcsEventType.CALL_CONNECTED, CallEventType.CONNECTED, None, False),
         (
             "call-disconnected.json",
             AcsEventType.CALL_DISCONNECTED,
@@ -30,7 +30,7 @@ def load_fixture(name: str) -> dict[str, Any]:
         (
             "create-call-failed.json",
             AcsEventType.CREATE_CALL_FAILED,
-            None,
+            CallEventType.DEPENDENCY_FAILED,
             None,
             True,
         ),
@@ -72,6 +72,30 @@ def test_sanitized_callback_fixture(
     if callback.call_event is not None:
         assert callback.call_event.event_type is domain_type
         assert callback.call_event.answer == answer
+        assert callback.call_event.call_id == callback.call_connection_id
+
+
+@pytest.mark.parametrize("sub_code", [8510, 8511, 99999])
+def test_technical_recognition_failure_is_not_silence(sub_code: int) -> None:
+    payload = load_fixture("recognize-failed.json")
+    payload["data"]["resultInformation"] = {"code": 500, "subCode": sub_code}
+    callback = parse_callback_event(payload)
+    assert callback.call_event is not None
+    assert callback.call_event.event_type is CallEventType.DEPENDENCY_FAILED
+    assert callback.call_event.acs_code == 500
+
+
+@pytest.mark.parametrize("event_type", [AcsEventType.PLAY_COMPLETED, AcsEventType.PLAY_FAILED])
+def test_playback_callbacks_keep_correlation(event_type: AcsEventType) -> None:
+    payload = load_fixture("call-connected.json")
+    payload["type"] = event_type.value
+    callback = parse_callback_event(payload)
+    assert callback.call_event is not None
+    assert callback.call_event.call_id == callback.call_connection_id
+    assert callback.call_event.event_type in {
+        CallEventType.PLAY_COMPLETED,
+        CallEventType.PLAY_FAILED,
+    }
 
 
 @pytest.mark.parametrize(

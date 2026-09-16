@@ -17,6 +17,10 @@ class RequestState(StrEnum):
 
 
 class CallEventType(StrEnum):
+    CONNECTED = "connected"
+    DEPENDENCY_FAILED = "dependency_failed"
+    PLAY_COMPLETED = "play_completed"
+    PLAY_FAILED = "play_failed"
     APPROVED = "approved"
     REJECTED = "rejected"
     ANSWERED = "answered"
@@ -39,6 +43,8 @@ class CallEvent:
     request_id: UUID
     event_type: CallEventType
     answer: str | None = None
+    call_id: str | None = None
+    acs_code: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -54,3 +60,4 @@ class HumanRequest:
     result: AskHumanResult | None = None
     error_code: ErrorCode | None = None
     error_message: str | None = None
+    recognition_started: bool = False

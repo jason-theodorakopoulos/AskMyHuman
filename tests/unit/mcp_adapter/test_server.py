@@ -1,14 +1,11 @@
 import asyncio
 import json
-from collections.abc import Iterator
 from pathlib import Path
+from types import SimpleNamespace
 from typing import cast
 from uuid import UUID, uuid4
 
 import pytest
-from mcp.server.auth.middleware.auth_context import auth_context_var
-from mcp.server.auth.middleware.bearer_auth import AuthenticatedUser
-from mcp.server.auth.provider import AccessToken
 from mcp.server.context import ServerRequestContext
 from mcp.shared.exceptions import MCPError
 from mcp.types import INVALID_PARAMS, CallToolRequestParams, TextContent
@@ -66,21 +63,13 @@ class RecordingUseCase:
 
 
 @pytest.fixture
-def authenticated_agent() -> Iterator[None]:
-    token = auth_context_var.set(
-        AuthenticatedUser(
-            AccessToken(
-                token="validated-token",
-                client_id="agent-application",
-                subject="agent-subject",
-                scopes=[],
-            )
-        )
-    )
-    try:
-        yield
-    finally:
-        auth_context_var.reset(token)
+def authenticated_agent(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def authenticate(
+        self: AskHumanMcpAdapter, context: ServerRequestContext[object]
+    ) -> Principal:
+        return Principal(subject_id="agent-subject", application_id="agent-application")
+
+    monkeypatch.setattr(AskHumanMcpAdapter, "_authenticated_principal", authenticate)
 
 
 def test_tool_uses_checked_in_request_and_result_schemas() -> None:
@@ -180,7 +169,9 @@ async def test_application_error_is_structured_and_marked_as_error(
 
 
 @pytest.mark.asyncio
-async def test_unexpected_failure_is_sanitized(authenticated_agent: None) -> None:
+async def test_unexpected_failure_is_sanitized(
+    authenticated_agent: None, caplog: pytest.LogCaptureFixture
+) -> None:
     use_case = RecordingUseCase()
     use_case.error = RuntimeError("database password leaked")
 
@@ -194,6 +185,26 @@ async def test_unexpected_failure_is_sanitized(authenticated_agent: None) -> Non
     content = response.content[0]
     assert isinstance(content, TextContent)
     assert "password" not in content.text
+    assert "database password leaked" not in caplog.text
+    assert all(record.exc_info is None for record in caplog.records)
+
+
+@pytest.mark.asyncio
+async def test_token_like_context_cannot_bypass_missing_trusted_authenticator() -> None:
+    use_case = RecordingUseCase()
+    token_context = cast(
+        ServerRequestContext[object],
+        SimpleNamespace(
+            access_token=SimpleNamespace(subject="agent-subject", client_id="agent-application"),
+        ),
+    )
+    response = await AskHumanMcpAdapter(use_case).call_tool(
+        token_context,
+        CallToolRequestParams(name="ask_human", arguments=arguments()),
+    )
+    assert response.is_error
+    assert response.structured_content["code"] == "unauthenticated"
+    assert use_case.calls == []
 
 
 @pytest.mark.asyncio

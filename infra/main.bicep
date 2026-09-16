@@ -4,6 +4,10 @@ targetScope = 'resourceGroup'
 param location string
 @description('Content-addressed Container App image reference.')
 param containerImage string
+@description('Explicit Container App target approved for this release.')
+param containerAppName string
+@description('Revision suffix bound to the reviewed image and source.')
+param revisionSuffix string
 @description('Existing Azure Container Registry login server.')
 param containerRegistryServer string
 @description('Existing Azure Container Registry resource ID.')
@@ -28,8 +32,11 @@ param entraClientSecret string
 param authorizedAgentAppIds string
 @description('Existing ACS resource ID. The resource and source number are external.')
 param existingAcsResourceId string
-@description('Public HTTPS service URL used as the ACS callback audience.')
+@description('Verified ACS properties.immutableResourceId expected as the callback JWT audience, not an ARM ID or URL.')
+@minLength(1)
 param acsCallbackAudience string
+@description('Full public HTTPS callback endpoint, including /v1/callbacks/acs.')
+param acsCallbackUrl string
 @description('Comma-separated public hosts accepted by the MCP transport.')
 param mcpAllowedHosts string
 
@@ -79,6 +86,8 @@ module containerApp 'modules/container-app.bicep' = {
 		location: location
 		resourceNamePrefix: resourceNamePrefix
 		containerImage: containerImage
+		containerAppName: containerAppName
+		revisionSuffix: revisionSuffix
 		containerRegistryServer: containerRegistryServer
 		containerRegistryResourceId: containerRegistryResourceId
 		identityResourceId: identity.outputs.identityResourceId
@@ -97,6 +106,7 @@ module containerApp 'modules/container-app.bicep' = {
 		entraClientSecret: entraClientSecret
 		authorizedAgentAppIds: authorizedAgentAppIds
 		acsCallbackAudience: acsCallbackAudience
+		acsCallbackUrl: acsCallbackUrl
 		mcpAllowedHosts: mcpAllowedHosts
 		locale: 'en-US'
 		voiceName: 'en-US-AvaMultilingualNeural'

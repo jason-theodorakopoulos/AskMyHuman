@@ -13,7 +13,7 @@ if config.config_file_name is not None:
 _database_url = os.environ.get("DATABASE_URL")
 if _database_url:
     _database_url = re.sub(r"^postgres(ql)?://", "postgresql+psycopg://", _database_url, count=1)
-    config.set_main_option("sqlalchemy.url", _database_url)
+    config.set_main_option("sqlalchemy.url", _database_url.replace("%", "%%"))
 
 target_metadata = None
 

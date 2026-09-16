@@ -11,7 +11,8 @@ def settings(**overrides: object) -> Settings:
         "acs_source_phone_number": "+15555550100",
         "my_mobile_number": "+15555550101",
         "azure_ai_endpoint": "https://example.cognitiveservices.azure.com",
-        "acs_callback_audience": "https://askmyhuman.example.com",
+        "acs_callback_url": "https://askmyhuman.example.com/v1/callbacks/acs",
+        "acs_callback_audience": "00000000-0000-4000-8000-000000000001",
         "entra_tenant_id": "tenant",
         "entra_client_id": "client",
         "authorized_agent_app_ids": ("agent",),
@@ -85,7 +86,8 @@ def test_settings_parse_comma_separated_allow_lists_from_the_environment(
         "ACS_SOURCE_PHONE_NUMBER": "+15555550100",
         "MY_MOBILE_NUMBER": "+15555550101",
         "AZURE_AI_ENDPOINT": "https://example.cognitiveservices.azure.com",
-        "ACS_CALLBACK_AUDIENCE": "https://askmyhuman.example.com",
+        "ACS_CALLBACK_URL": "https://askmyhuman.example.com/v1/callbacks/acs",
+        "ACS_CALLBACK_AUDIENCE": "00000000-0000-4000-8000-000000000001",
         "ENTRA_TENANT_ID": "tenant",
         "ENTRA_CLIENT_ID": "client",
         "AUTHORIZED_AGENT_APP_IDS": "agent-a,agent-b",
@@ -98,3 +100,24 @@ def test_settings_parse_comma_separated_allow_lists_from_the_environment(
 
     assert configured.authorized_agent_app_ids == ("agent-a", "agent-b")
     assert configured.mcp_allowed_hosts == ("one.example.com", "two.example.com")
+
+
+@pytest.mark.parametrize("audience", ["", " ", "\n"])
+def test_callback_audience_rejects_blank_identifiers(audience: str) -> None:
+    with pytest.raises(ValidationError, match="acs_callback_audience"):
+        settings(acs_callback_audience=audience)
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://example.com/v1/callbacks/acs",
+        "https://example.com",
+        "https://user:password@example.com/v1/callbacks/acs",
+        "https://example.com/v1/callbacks/acs?token=secret",
+        "https://example.com/v1/callbacks/acs#fragment",
+    ],
+)
+def test_callback_url_requires_a_full_https_endpoint(url: str) -> None:
+    with pytest.raises(ValidationError, match="acs_callback_url"):
+        settings(acs_callback_url=url)

@@ -1,3 +1,4 @@
+import asyncio
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
@@ -11,7 +12,13 @@ from azure.communication.callautomation import (
 from azure.communication.callautomation.aio import CallAutomationClient
 
 from ask_my_human.contracts import AskHumanRequest, RequestKind
-from ask_my_human.domain.models import HumanRequest, Principal, RequestState
+from ask_my_human.domain.models import (
+    CallEvent,
+    CallEventType,
+    HumanRequest,
+    Principal,
+    RequestState,
+)
 from ask_my_human.telephony.acs_client import AcsCallAutomationGateway
 
 
@@ -33,7 +40,9 @@ def human_request(kind: RequestKind = RequestKind.APPROVAL) -> HumanRequest:
 
 
 def gateway(
-    *, enable_dtmf_fallback: bool = True
+    *,
+    enable_dtmf_fallback: bool = True,
+    playback_timeout_seconds: float = 0.05,
 ) -> tuple[AcsCallAutomationGateway, MagicMock, MagicMock]:
     client = MagicMock(spec=CallAutomationClient)
     connection = MagicMock()
@@ -50,6 +59,7 @@ def gateway(
         locale="en-US",
         voice_name="en-US-AvaMultilingualNeural",
         enable_dtmf_fallback=enable_dtmf_fallback,
+        playback_timeout_seconds=playback_timeout_seconds,
     )
     return adapter, client, connection
 
@@ -147,4 +157,33 @@ async def test_hang_up_terminates_the_call_for_everyone() -> None:
     await adapter.hang_up("call-id")
 
     client.get_call_connection.assert_called_once_with("call-id")
+    connection.hang_up.assert_awaited_once_with(True)
+
+
+@pytest.mark.parametrize("event_type", [CallEventType.PLAY_COMPLETED, CallEventType.PLAY_FAILED])
+async def test_acknowledgement_waits_for_correlated_playback(event_type: CallEventType) -> None:
+    adapter, _, connection = gateway(playback_timeout_seconds=1)
+    request_id = uuid4()
+    submitted = asyncio.Event()
+    connection.play_media.side_effect = lambda *args, **kwargs: submitted.set()
+    cleanup = asyncio.create_task(adapter.acknowledge_and_hang_up("call-id", request_id=request_id))
+    await submitted.wait()
+    connection.hang_up.assert_not_awaited()
+    await adapter.handle_playback_event(CallEvent(uuid4(), event_type, call_id="call-id"))
+    await adapter.handle_playback_event(CallEvent(request_id, event_type, call_id="other-call"))
+    assert not cleanup.done()
+    await adapter.acknowledge_and_hang_up("call-id", request_id=request_id)
+    connection.play_media.assert_awaited_once()
+    event = CallEvent(request_id, event_type, call_id="call-id")
+    await adapter.handle_playback_event(event)
+    await cleanup
+    await adapter.handle_playback_event(event)
+    connection.hang_up.assert_awaited_once_with(True)
+    assert connection.play_media.await_args.kwargs["operation_context"] == str(request_id)
+
+
+async def test_acknowledgement_submission_failure_still_hangs_up() -> None:
+    adapter, _, connection = gateway()
+    connection.play_media.side_effect = RuntimeError("private provider details")
+    await adapter.acknowledge_and_hang_up("call-id")
     connection.hang_up.assert_awaited_once_with(True)

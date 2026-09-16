@@ -6,6 +6,10 @@ param location string
 param resourceNamePrefix string
 @description('Content-addressed Container App image reference.')
 param containerImage string
+@description('Explicit Container App target approved for this release.')
+param containerAppName string
+@description('Revision suffix bound to the reviewed image and source.')
+param revisionSuffix string
 @description('Existing Azure Container Registry login server.')
 param containerRegistryServer string
 @description('Existing Azure Container Registry resource ID.')
@@ -46,7 +50,10 @@ param entraClientSecret string
 @description('Comma-separated authorized agent application IDs.')
 param authorizedAgentAppIds string
 @description('Audience expected on ACS callback bearer tokens.')
+@minLength(1)
 param acsCallbackAudience string
+@description('Full public HTTPS callback endpoint, including /v1/callbacks/acs.')
+param acsCallbackUrl string
 @description('Comma-separated hosts accepted by the MCP transport.')
 param mcpAllowedHosts string
 @description('Speech recognition locale.')
@@ -63,7 +70,6 @@ param pollIntervalMilliseconds int
 param retentionHours int
 
 var containerAppsEnvironmentName = '${resourceNamePrefix}-environment'
-var containerAppName = '${resourceNamePrefix}-app'
 var postgresAdministratorLogin = 'askmyhumanadmin'
 var registryResourceIdSegments = split(containerRegistryResourceId, '/')
 var registrySubscriptionId = registryResourceIdSegments[2]
@@ -158,6 +164,7 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
       ]
     }
     template: {
+      revisionSuffix: revisionSuffix
       containers: [
         {
           name: 'ask-my-human'
@@ -194,6 +201,10 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
             {
               name: 'ACS_CALLBACK_AUDIENCE'
               value: acsCallbackAudience
+            }
+            {
+              name: 'ACS_CALLBACK_URL'
+              value: acsCallbackUrl
             }
             {
               name: 'ENTRA_TENANT_ID'

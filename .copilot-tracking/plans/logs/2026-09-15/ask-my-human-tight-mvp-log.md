@@ -58,10 +58,6 @@ implementation plan.
   * Plan specifies: The original design provisions a VNet, delegated subnets, private PostgreSQL DNS, and VNet-integrated Container Apps.
   * Implementation differs: The network module is removed, PostgreSQL enables public network access with TLS and an Azure-services firewall rule, and Container Apps uses its default public environment network.
   * Rationale: The user selected public connectivity on 2026-09-15 to reduce MVP infrastructure and deployment complexity. Application authentication, callback JWT validation, managed identity, TLS, and secret handling remain enforced.
-* DD-06: Phase 2 integration added the `aiohttp` runtime dependency and relaxed list-setting decoding.
-  * Plan specifies: Composition wires validated exports without manifest or configuration changes.
-  * Implementation differs: `pyproject.toml` gained `aiohttp`, `uv.lock` was regenerated once, and the comma-separated settings use `NoDecode`.
-  * Rationale: The asynchronous Azure SDK clients need the aiohttp transport, and pydantic-settings JSON-decoded the list fields before their validator, so the deployed environment values could not load. Both defects only surface when real adapters are composed.
 
 ## Implementation Paths Considered
 
@@ -156,27 +152,3 @@ authentication smoke checks, failure handling, and separately gated live-test
 step. DR-01 through DR-05 remain tenant-owned external release inputs with
 explicit resolution gates in Step 5.1, not unplanned implementation gaps. DD-01
 and DD-02 remain intentional, research-backed decisions.
-
-## Phase 5 Execution Status
-
-Recorded on 2026-09-16.
-
-Phase 5 implementation is complete and Phase 5 execution is blocked.
-
-* Blocked: Steps 5.1, 5.2, and 5.3 need an Azure subscription, a container
-  registry, an ACS resource with an outbound-enabled number, and the Entra
-  registrations described by DR-01 through DR-05. None are available in the
-  implementation environment, and Step 5.3 places billable calls.
-* Ready to run: `scripts/deploy_azure.sh what-if`, then
-  `scripts/deploy_azure.sh deploy`, then
-  `RUN_LIVE_AZURE_TESTS=1 uv run pytest -m live tests/e2e/test_live_call.py -vv`.
-* DR-01 through DR-05 remain unresolved and stay tenant-owned release inputs.
-
-## Additional Follow-On Work
-
-* WI-06: Confirm during the first real deployment that Container Apps health
-  probes reach the container without passing through the authentication
-  sidecar, since `unauthenticatedClientAction` is `Return401` and only the ACS
-  callback path is excluded (low priority, small effort).
-  * Source: `infra/modules/container-app.bicep`
-  * Dependency: Step 5.2

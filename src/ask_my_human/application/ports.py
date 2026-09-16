@@ -1,5 +1,7 @@
 """Narrow async application boundaries."""
 
+from collections.abc import Sequence
+from contextlib import AbstractContextManager
 from datetime import datetime
 from enum import StrEnum
 from typing import Literal, Protocol
@@ -54,9 +56,16 @@ class RequestRepository(Protocol):
 
     async def attach_call_id(self, request_id: UUID, call_id: str) -> bool: ...
 
+    async def claim_recognition(self, request_id: UUID) -> bool: ...
+
     async def get(self, request_id: UUID) -> HumanRequest | None: ...
 
-    async def complete_if_pending(self, result: AskHumanResult) -> bool: ...
+    async def complete_if_pending(
+        self,
+        result: AskHumanResult,
+        *,
+        before: datetime | None = None,
+    ) -> bool: ...
 
     async def complete_error_if_pending(
         self,
@@ -67,6 +76,10 @@ class RequestRepository(Protocol):
 
     async def expire_stale(self, now: datetime) -> int: ...
 
+    async def expire_stale_calls(self, now: datetime) -> Sequence[HumanRequest]: ...
+
+    async def pending_count(self) -> int: ...
+
     async def purge_terminal(self, before: datetime) -> int: ...
 
 
@@ -75,7 +88,14 @@ class CallAutomationGateway(Protocol):
 
     async def start_recognition(self, call_id: str, request: HumanRequest) -> None: ...
 
-    async def acknowledge_and_hang_up(self, call_id: str) -> None: ...
+    async def acknowledge_and_hang_up(
+        self,
+        call_id: str,
+        *,
+        request_id: UUID | None = None,
+    ) -> None: ...
+
+    async def handle_playback_event(self, event: CallEvent) -> None: ...
 
     async def hang_up(self, call_id: str) -> None: ...
 
@@ -90,9 +110,29 @@ class TelemetryOperation(StrEnum):
     ASK = "ask"
     CALLBACK = "callback"
     REPOSITORY = "repository"
+    CREATE_CALL = "create_call"
+    RECOGNIZE = "recognize"
 
 
 class Telemetry(Protocol):
+    def span(
+        self,
+        operation: TelemetryOperation,
+        *,
+        request_id: UUID,
+        kind: RequestKind | None = None,
+    ) -> AbstractContextManager[object]: ...
+
+    def dependency_failed(
+        self,
+        operation: TelemetryOperation,
+        *,
+        acs_code: int | None = None,
+        error_code: ErrorCode | None = None,
+    ) -> None: ...
+
+    def set_pending(self, pending: bool) -> None: ...
+
     def record(
         self,
         *,

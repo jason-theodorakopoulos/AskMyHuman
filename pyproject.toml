@@ -28,6 +28,7 @@ build-backend = "hatchling.build"
 
 [dependency-groups]
 dev = [
+  "azure-monitor-query>=2,<3",
   "cryptography>=50,<51",
   "jsonschema[format]>=4.26,<5",
   "mcp[cli]>=2.2,<3",

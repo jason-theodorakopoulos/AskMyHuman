@@ -16,6 +16,8 @@ class AcsEventType(StrEnum):
     RECOGNIZE_COMPLETED = "Microsoft.Communication.RecognizeCompleted"
     RECOGNIZE_FAILED = "Microsoft.Communication.RecognizeFailed"
     RECOGNIZE_CANCELED = "Microsoft.Communication.RecognizeCanceled"
+    PLAY_COMPLETED = "Microsoft.Communication.PlayCompleted"
+    PLAY_FAILED = "Microsoft.Communication.PlayFailed"
 
 
 @dataclass(frozen=True, slots=True)
@@ -36,7 +38,7 @@ class AcsCallbackEvent:
 
     @property
     def dependency_failure(self) -> bool:
-        return self.event_type is AcsEventType.CREATE_CALL_FAILED and self.call_event is None
+        return self._domain_event_type() is CallEventType.DEPENDENCY_FAILED
 
     @property
     def call_event(self) -> CallEvent | None:
@@ -46,11 +48,21 @@ class AcsCallbackEvent:
         answer = (
             self.speech.strip() if event_type is CallEventType.ANSWERED and self.speech else None
         )
-        return CallEvent(request_id=self.request_id, event_type=event_type, answer=answer)
+        return CallEvent(
+            request_id=self.request_id,
+            event_type=event_type,
+            answer=answer,
+            call_id=self.call_connection_id,
+            acs_code=None if self.result_information is None else self.result_information.code,
+        )
 
     def _domain_event_type(self) -> CallEventType | None:
         if self.event_type is AcsEventType.CALL_CONNECTED:
-            return None
+            return CallEventType.CONNECTED
+        if self.event_type is AcsEventType.PLAY_COMPLETED:
+            return CallEventType.PLAY_COMPLETED
+        if self.event_type is AcsEventType.PLAY_FAILED:
+            return CallEventType.PLAY_FAILED
         if self.event_type is AcsEventType.RECOGNIZE_COMPLETED:
             if self.choice_label == "approve":
                 return CallEventType.APPROVED
@@ -60,7 +72,12 @@ class AcsCallbackEvent:
                 return CallEventType.ANSWERED
             return CallEventType.NO_ANSWER
         if self.event_type is AcsEventType.RECOGNIZE_FAILED:
-            return CallEventType.NO_ANSWER
+            if self.result_information is not None and (
+                self.result_information.code == 400
+                and self.result_information.sub_code in {8510, 8511}
+            ):
+                return CallEventType.NO_ANSWER
+            return CallEventType.DEPENDENCY_FAILED
         if self.event_type is AcsEventType.RECOGNIZE_CANCELED:
             return CallEventType.CANCELLED
 
@@ -69,7 +86,7 @@ class AcsCallbackEvent:
             return classified
         if self.event_type is AcsEventType.CALL_DISCONNECTED:
             return CallEventType.DISCONNECTED
-        return None
+        return CallEventType.DEPENDENCY_FAILED
 
 
 def parse_callback_event(payload: Mapping[str, Any]) -> AcsCallbackEvent:

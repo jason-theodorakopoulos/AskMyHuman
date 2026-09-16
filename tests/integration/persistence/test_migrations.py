@@ -1,4 +1,27 @@
+from io import StringIO
+
+import pytest
+from alembic import command
+from alembic.config import Config
 from sqlalchemy import create_engine, inspect
+
+
+def test_encoded_database_url_runs_offline_without_disclosing_credentials(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    database_url = "postgresql://probe:dummy%40password%25@localhost/probe"
+    monkeypatch.setenv("DATABASE_URL", database_url)
+    output = StringIO()
+    config = Config("alembic.ini", output_buffer=output)
+
+    command.upgrade(config, "head", sql=True)
+
+    assert "CREATE TABLE human_requests" in output.getvalue()
+    assert config.get_main_option("sqlalchemy.url") == database_url.replace(
+        "postgresql://", "postgresql+psycopg://"
+    )
+    captured = capsys.readouterr()
+    assert "dummy" not in output.getvalue() + captured.out + captured.err
 
 
 def test_initial_migration_creates_table_constraints_and_pending_index(database_url: str) -> None:

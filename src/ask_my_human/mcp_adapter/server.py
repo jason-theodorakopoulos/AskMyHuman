@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Awaitable, Callable
 from contextlib import suppress
 from typing import Any
 
 import anyio
-from mcp.server.auth.middleware.auth_context import get_access_token
 from mcp.server.context import ServerRequestContext
 from mcp.server.lowlevel import Server
 from mcp.server.transport_security import TransportSecuritySettings
@@ -25,6 +25,7 @@ from mcp.types import (
 )
 from pydantic import ValidationError
 from starlette.applications import Starlette
+from starlette.requests import Request
 
 from ask_my_human.application.ports import AskHumanUseCase
 from ask_my_human.contracts import AskHumanRequest, AskHumanResult, ExecutionError
@@ -103,8 +104,13 @@ ASK_HUMAN_TOOL = Tool(
 
 
 class AskHumanMcpAdapter:
-    def __init__(self, use_case: AskHumanUseCase) -> None:
+    def __init__(
+        self,
+        use_case: AskHumanUseCase,
+        authenticate: Callable[[Request], Awaitable[Principal]] | None = None,
+    ) -> None:
         self._use_case = use_case
+        self._authenticate = authenticate
 
     async def list_tools(
         self,
@@ -119,7 +125,6 @@ class AskHumanMcpAdapter:
         context: ServerRequestContext[Any],
         params: CallToolRequestParams,
     ) -> CallToolResult:
-        del context
         if params.name != ASK_HUMAN_TOOL.name:
             raise MCPError(code=METHOD_NOT_FOUND, message=f"Unknown tool: {params.name}")
 
@@ -136,7 +141,7 @@ class AskHumanMcpAdapter:
             ) from exception
 
         try:
-            principal = self._authenticated_principal()
+            principal = await self._authenticated_principal(context)
             result = await self._dispatch(principal, request)
         except AskMyHumanError as exception:
             return self._error_result(
@@ -150,7 +155,7 @@ class AskHumanMcpAdapter:
         except asyncio.CancelledError:
             raise
         except Exception:
-            logger.exception("ask_human failed after dispatch")
+            logger.error("ask_human failed after dispatch")
             return self._error_result(
                 ExecutionError(
                     requestId=request.idempotency_key,
@@ -185,15 +190,13 @@ class AskHumanMcpAdapter:
                     await service_task
             raise
 
-    @staticmethod
-    def _authenticated_principal() -> Principal:
-        token = get_access_token()
-        if token is None or token.subject is None:
+    async def _authenticated_principal(self, context: ServerRequestContext[Any]) -> Principal:
+        if self._authenticate is None or not isinstance(context.request, Request):
             raise AskMyHumanError(
                 ErrorCode.UNAUTHENTICATED,
                 "An authenticated agent identity is required.",
             )
-        return Principal(subject_id=token.subject, application_id=token.client_id)
+        return await self._authenticate(context.request)
 
     @staticmethod
     def _error_result(error: ExecutionError) -> CallToolResult:
@@ -204,9 +207,12 @@ class AskHumanMcpAdapter:
         )
 
 
-def create_mcp_server(use_case: AskHumanUseCase) -> Server[Any]:
+def create_mcp_server(
+    use_case: AskHumanUseCase,
+    authenticate: Callable[[Request], Awaitable[Principal]] | None = None,
+) -> Server[Any]:
     """Create the MCP server that dispatches directly to the application use case."""
-    adapter = AskHumanMcpAdapter(use_case)
+    adapter = AskHumanMcpAdapter(use_case, authenticate)
     return Server(
         "ask-my-human",
         on_list_tools=adapter.list_tools,
@@ -217,11 +223,12 @@ def create_mcp_server(use_case: AskHumanUseCase) -> Server[Any]:
 def create_streamable_http_app(
     use_case: AskHumanUseCase,
     *,
+    authenticate: Callable[[Request], Awaitable[Principal]] | None = None,
     transport_security: TransportSecuritySettings | None = None,
     host: str = "127.0.0.1",
 ) -> Starlette:
     """Create the Streamable HTTP ASGI application mounted at ``/mcp``."""
-    return create_mcp_server(use_case).streamable_http_app(
+    return create_mcp_server(use_case, authenticate).streamable_http_app(
         streamable_http_path="/mcp",
         transport_security=transport_security,
         host=host,

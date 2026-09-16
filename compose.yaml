@@ -7,7 +7,7 @@ services:
       POSTGRES_PASSWORD: localdev
       POSTGRES_DB: askmyhuman
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U askmyhuman -d askmyhuman"]
       interval: 5s
@@ -21,7 +21,7 @@ services:
       db:
         condition: service_healthy
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     environment:
       DATABASE_URL: postgresql://askmyhuman:localdev@db:5432/askmyhuman
       # Placeholders that satisfy startup validation; no Azure call is made locally.
@@ -29,8 +29,9 @@ services:
       ACS_SOURCE_PHONE_NUMBER: "+15555550100"
       MY_MOBILE_NUMBER: "+15555550101"
       AZURE_AI_ENDPOINT: https://local.cognitiveservices.azure.com
-      ACS_CALLBACK_AUDIENCE: http://localhost:8000
+      ACS_CALLBACK_AUDIENCE: local-acs-immutable-resource-id
+      ACS_CALLBACK_URL: https://local.example.invalid/v1/callbacks/acs
       ENTRA_TENANT_ID: 00000000-0000-0000-0000-000000000000
       ENTRA_CLIENT_ID: 00000000-0000-0000-0000-000000000000
       AUTHORIZED_AGENT_APP_IDS: 00000000-0000-0000-0000-000000000000
-      MCP_ALLOWED_HOSTS: localhost
+      MCP_ALLOWED_HOSTS: localhost:8000,127.0.0.1:8000

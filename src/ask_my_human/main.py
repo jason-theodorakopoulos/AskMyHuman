@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
-from contextlib import AsyncExitStack, asynccontextmanager, suppress
+from contextlib import AsyncExitStack, asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, Protocol
@@ -25,7 +25,7 @@ from ask_my_human.application.service import AskHumanService
 from ask_my_human.config import Settings
 from ask_my_human.domain.models import CallEvent, Principal
 from ask_my_human.mcp_adapter.server import create_mcp_server
-from ask_my_human.observability import configure_observability
+from ask_my_human.observability import configure_observability, instrument_app
 from ask_my_human.persistence.pool import PostgresPool
 from ask_my_human.persistence.repository import PostgresRequestRepository
 from ask_my_human.security.acs_callback import AcsCallbackTokenValidator
@@ -120,7 +120,7 @@ def build_components(settings: Settings) -> ApplicationComponents:
     gateway = AcsCallAutomationGateway.from_settings(acs_client, settings)
 
     pool = PostgresPool(settings.database_url.get_secret_value())
-    repository = PostgresRequestRepository(pool.pool)
+    repository = PostgresRequestRepository(pool.pool, telemetry=telemetry)
 
     service = AskHumanService(
         repository,
@@ -136,11 +136,13 @@ def build_components(settings: Settings) -> ApplicationComponents:
     maintenance = RequestMaintenance(
         repository,
         clock,
+        gateway=gateway,
+        telemetry=telemetry,
         retention_hours=settings.retention_hours,
     )
 
     http_client = httpx.AsyncClient()
-    validator = AcsCallbackTokenValidator(http_client, str(settings.acs_callback_audience))
+    validator = AcsCallbackTokenValidator(http_client, settings.acs_callback_audience)
 
     async def validate_callback_token(token: str) -> None:
         # The router forwards the bare token; the validator owns scheme parsing.
@@ -161,8 +163,18 @@ def create_app(components: ApplicationComponents | None = None) -> FastAPI:
     """Compose one FastAPI application that also serves the MCP transport."""
     resolved = components if components is not None else build_components(load_settings())
     settings = resolved.settings
+    maintenance_tasks: list[asyncio.Task[None]] = []
 
-    mcp_server = create_mcp_server(resolved.use_case)
+    def maintenance_ready() -> bool:
+        return len(maintenance_tasks) == 2 and all(not task.done() for task in maintenance_tasks)
+
+    async def authenticate(request: Request) -> Principal:
+        return parse_container_apps_principal(
+            request.headers.get(PRINCIPAL_HEADER),
+            settings.authorized_agent_app_ids,
+        )
+
+    mcp_server = create_mcp_server(resolved.use_case, authenticate)
     mcp_app = mcp_server.streamable_http_app(
         streamable_http_path="/mcp",
         transport_security=TransportSecuritySettings(
@@ -172,23 +184,17 @@ def create_app(components: ApplicationComponents | None = None) -> FastAPI:
         ),
     )
 
-    async def authenticate(request: Request) -> Principal:
-        return parse_container_apps_principal(
-            request.headers.get(PRINCIPAL_HEADER),
-            settings.authorized_agent_app_ids,
-        )
-
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         shutdown = ShutdownSignal()
         async with AsyncExitStack() as stack:
             # Register client cleanup before opening the pool so a failed open leaks nothing.
             stack.push_async_callback(_close_all, resolved.closers)
-            await resolved.pool.open()
             stack.push_async_callback(resolved.pool.close)
+            await resolved.pool.open()
             await stack.enter_async_context(mcp_server.session_manager.run())
 
-            maintenance_tasks = [
+            maintenance_tasks[:] = [
                 asyncio.create_task(resolved.maintenance.run_expiry_loop(shutdown)),
                 asyncio.create_task(resolved.maintenance.run_purge_loop(shutdown)),
             ]
@@ -203,7 +209,7 @@ def create_app(components: ApplicationComponents | None = None) -> FastAPI:
         lifespan=lifespan,
     )
     app.include_router(liveness_router)
-    app.include_router(create_readiness_router(settings, resolved.pool_state))
+    app.include_router(create_readiness_router(settings, resolved.pool_state, maintenance_ready))
     app.include_router(create_oauth_metadata_router(settings))
     app.include_router(
         create_requests_router(use_case=resolved.use_case, authenticate=authenticate)
@@ -217,6 +223,7 @@ def create_app(components: ApplicationComponents | None = None) -> FastAPI:
     )
     # Mount last so the catch-all MCP transport never shadows an HTTP route.
     app.mount("/", mcp_app)
+    instrument_app(app)
     return app
 
 
@@ -235,9 +242,10 @@ async def _stop_tasks(shutdown: ShutdownSignal, tasks: Sequence[asyncio.Task[Non
     shutdown.cancel()
     for task in tasks:
         task.cancel()
-    for task in tasks:
-        with suppress(asyncio.CancelledError):
-            await task
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    failures = [result for result in results if isinstance(result, Exception)]
+    if failures:
+        raise ExceptionGroup("maintenance shutdown failed", failures)
 
 
 def __getattr__(name: str) -> Any:

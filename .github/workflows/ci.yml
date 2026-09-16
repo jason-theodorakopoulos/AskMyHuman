@@ -45,18 +45,29 @@ jobs:
       - name: Type-check
         run: uv run mypy src tests
 
+      - name: Verify live tests skip without opt-in
+        run: uv run pytest -m live tests/e2e/test_live_call.py
+        env:
+          RUN_LIVE_AZURE_TESTS: "0"
+
       # Integration tests start PostgreSQL 16 via testcontainers using the runner's Docker.
       - name: Test with coverage
         run: uv run pytest -m "not live" --cov=ask_my_human --cov-report=term-missing --cov-fail-under=90
 
   image:
-    name: Build container image
+    name: Build and smoke-test container image
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
       - name: Validate Compose configuration
-        run: docker compose config --quiet
+        run: docker compose --env-file /dev/null config --quiet
+
+      - name: Validate release and smoke scripts
+        run: |
+          bash -n scripts/deploy_azure.sh scripts/smoke_image.sh
+          shellcheck scripts/deploy_azure.sh scripts/smoke_image.sh
 
       - uses: docker/setup-buildx-action@v3
 
@@ -64,9 +75,14 @@ jobs:
         with:
           context: .
           push: false
-          load: false
+          load: true
+          tags: askmyhuman:ci-smoke
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Run isolated non-paid image smoke
+        timeout-minutes: 8
+        run: timeout --kill-after=10 420 bash scripts/smoke_image.sh askmyhuman:ci-smoke
 
   bicep:
     name: Build Bicep
@@ -75,7 +91,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install Bicep
-        run: az bicep install
+        run: az bicep install --version v0.47.16
 
       - name: Build every template and parameter file
         run: |
@@ -95,6 +111,8 @@ jobs:
         env:
           AZURE_LOCATION: westeurope
           CONTAINER_IMAGE: placeholder.azurecr.io/ask-my-human:ci
+          CONTAINER_APP_NAME: placeholder-app
+          REVISION_SUFFIX: ci-build
           CONTAINER_REGISTRY_SERVER: placeholder.azurecr.io
           CONTAINER_REGISTRY_RESOURCE_ID: /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/placeholder/providers/Microsoft.ContainerRegistry/registries/placeholder
           POSTGRES_ADMIN_PASSWORD: placeholder
@@ -104,6 +122,7 @@ jobs:
           ENTRA_CLIENT_ID: 00000000-0000-0000-0000-000000000000
           ENTRA_CLIENT_SECRET: placeholder
           AUTHORIZED_AGENT_APP_IDS: 00000000-0000-0000-0000-000000000000
-          ACS_CALLBACK_AUDIENCE: https://placeholder.example.com
+          ACS_CALLBACK_AUDIENCE: placeholder-acs-immutable-resource-id
+          ACS_CALLBACK_URL: https://placeholder.example.com/v1/callbacks/acs
           MCP_ALLOWED_HOSTS: placeholder.example.com
           EXISTING_ACS_RESOURCE_ID: /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/placeholder/providers/Microsoft.Communication/communicationServices/placeholder

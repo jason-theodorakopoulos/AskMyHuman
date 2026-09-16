@@ -22,6 +22,7 @@ MAX_DOCUMENT_BYTES = 262_144
 MAX_JWKS_KEYS = 32
 MAX_CACHE_TTL_SECONDS = 3_600.0
 MAX_REQUEST_TIMEOUT_SECONDS = 10.0
+REFRESH_COOLDOWN_SECONDS = 30.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,8 +66,16 @@ class AcsCallbackTokenValidator:
         self._metadata: _Metadata | None = None
         self._key_set: _KeySet | None = None
         self._refresh_lock = asyncio.Lock()
+        self._next_fetch: dict[str, float] = {}
 
     async def validate(self, authorization: str | None) -> None:
+        try:
+            async with asyncio.timeout(self._request_timeout_seconds):
+                await self._validate(authorization)
+        except TimeoutError:
+            raise _authentication_unavailable() from None
+
+    async def _validate(self, authorization: str | None) -> None:
         token = _bearer_token(authorization)
         key_id = _token_key_id(token)
         metadata = await self._get_metadata()
@@ -133,6 +142,12 @@ class AcsCallbackTokenValidator:
             cached = self._key_set
             if cached is not expected and cached is not None and cached.expires_at > self._clock():
                 return cached
+            if (
+                cached is not None
+                and cached.expires_at > self._clock()
+                and self._next_fetch.get(metadata.jwks_uri, 0) > self._clock()
+            ):
+                return cached
             document = await self._fetch_json(metadata.jwks_uri)
             raw_keys = document.get("keys")
             if not isinstance(raw_keys, list) or len(raw_keys) > MAX_JWKS_KEYS:
@@ -159,12 +174,26 @@ class AcsCallbackTokenValidator:
             return key_set
 
     async def _fetch_json(self, url: str) -> dict[str, object]:
+        if self._next_fetch.get(url, 0) > self._clock():
+            raise _authentication_unavailable()
+        self._next_fetch[url] = self._clock() + REFRESH_COOLDOWN_SECONDS
         try:
-            response = await self._http_client.get(url, timeout=self._request_timeout_seconds)
-            response.raise_for_status()
-            if len(response.content) > MAX_DOCUMENT_BYTES:
-                raise ValueError
-            document = cast(object, json.loads(response.content))
+            async with self._http_client.stream(
+                "GET",
+                url,
+                timeout=self._request_timeout_seconds,
+                follow_redirects=False,
+                headers={"Accept-Encoding": "identity"},
+            ) as response:
+                response.raise_for_status()
+                if response.headers.get("content-encoding", "identity") != "identity":
+                    raise ValueError
+                content = bytearray()
+                async for chunk in response.aiter_bytes():
+                    if len(content) + len(chunk) > MAX_DOCUMENT_BYTES:
+                        raise ValueError
+                    content.extend(chunk)
+            document = cast(object, json.loads(content))
         except (httpx.HTTPError, UnicodeDecodeError, json.JSONDecodeError, ValueError):
             raise _authentication_unavailable() from None
         if not isinstance(document, dict) or not all(isinstance(key, str) for key in document):

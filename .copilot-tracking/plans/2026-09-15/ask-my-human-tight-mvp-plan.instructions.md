@@ -109,7 +109,7 @@ shared files. Dependency changes return to the foundation owner, who regenerates
 
 ## Implementation Checklist
 
-### [x] Implementation Phase 0: Foundation And Contract Freeze
+### [ ] Implementation Phase 0: Foundation And Contract Freeze
 
 <!-- parallelizable: false -->
 
@@ -125,7 +125,7 @@ commit before feature branches diverge.
   * Details: .copilot-tracking/details/2026-09-15/ask-my-human-tight-mvp-details.md (Lines 136-181)
 * [x] Step 0.4: Freeze Bicep module inputs, outputs, secure-value rules, and external deployment inputs.
   * Details: .copilot-tracking/details/2026-09-15/ask-my-human-tight-mvp-details.md (Lines 182-216)
-* [x] Step 0.5: Run contract, domain, configuration, schema, lock, lint, and type validation; publish the foundation commit.
+* [ ] Step 0.5: Run contract, domain, configuration, schema, lock, lint, and type validation; publish the foundation commit.
   * Details: .copilot-tracking/details/2026-09-15/ask-my-human-tight-mvp-details.md (Lines 217-236)
 
 ### [x] Implementation Phase 1A: Parallel Application Workstreams
@@ -180,43 +180,43 @@ and never edit the Bicep composition root.
   * Owner: Compute infrastructure developer
   * Details: .copilot-tracking/details/2026-09-15/ask-my-human-tight-mvp-details.md (Lines 699-734)
 
-### [x] Implementation Phase 2: Parallel Integration
+### [ ] Implementation Phase 2: Parallel Integration
 
 <!-- parallelizable: true -->
 
 Application and infrastructure integration run concurrently after their incoming
 workstreams pass scoped checks.
 
-* [x] Step 2.1: Compose one ASGI application and lifespan from validated application exports.
+* [ ] Step 2.1: Compose one ASGI application and lifespan from validated application exports.
   * Owner: Application integrator
   * Details: .copilot-tracking/details/2026-09-15/ask-my-human-tight-mvp-details.md (Lines 743-779)
-* [x] Step 2.2: Compose the resource-group Bicep deployment and development parameter bindings.
+* [ ] Step 2.2: Compose the resource-group Bicep deployment and development parameter bindings.
   * Owner: Infrastructure integrator
   * Details: .copilot-tracking/details/2026-09-15/ask-my-human-tight-mvp-details.md (Lines 780-811)
 
-### [x] Implementation Phase 3: Image, Local Environment, And CI
+### [ ] Implementation Phase 3: Image, Local Environment, And CI
 
 <!-- parallelizable: false -->
 
-* [x] Step 3.1: Build the pinned runtime image and local Compose PostgreSQL environment.
+* [ ] Step 3.1: Build the pinned runtime image and local Compose PostgreSQL environment.
   * Owner: Release developer
   * Details: .copilot-tracking/details/2026-09-15/ask-my-human-tight-mvp-details.md (Lines 819-849)
-* [x] Step 3.2: Add CI for schema drift, formatting, lint, typing, non-live tests, coverage, image build, and Bicep build.
+* [ ] Step 3.2: Add CI for schema drift, formatting, lint, typing, non-live tests, coverage, image build, and Bicep build.
   * Owner: Release developer
   * Details: .copilot-tracking/details/2026-09-15/ask-my-human-tight-mvp-details.md (Lines 850-870)
-* [x] Step 3.3: Create the gated live-test harness, including controlled backdated-row retention verification.
+* [ ] Step 3.3: Create the gated live-test harness, including controlled backdated-row retention verification.
   * Owner: Release developer
   * Details: .copilot-tracking/details/2026-09-15/ask-my-human-tight-mvp-details.md (Lines 871-893)
 
-### [x] Implementation Phase 4: Complete Local Validation And Documentation
+### [ ] Implementation Phase 4: Complete Local Validation And Documentation
 
 <!-- parallelizable: false -->
 
-* [x] Step 4.1: Run the pre-documentation local merge gate and correct isolated defects within their owning workstreams.
+* [ ] Step 4.1: Run the pre-documentation local merge gate and correct isolated defects within their owning workstreams.
   * Details: .copilot-tracking/details/2026-09-15/ask-my-human-tight-mvp-details.md (Lines 898-924)
-* [x] Step 4.2: Update README.md with only verified behavior, commands, deployment inputs, scope, and the Play-and-Recognize decision.
+* [ ] Step 4.2: Update README.md with only verified behavior, commands, deployment inputs, scope, and the Play-and-Recognize decision.
   * Details: .copilot-tracking/details/2026-09-15/ask-my-human-tight-mvp-details.md (Lines 925-952)
-* [x] Step 4.3: Rerun the complete gate and Markdown checks against the post-documentation repository.
+* [ ] Step 4.3: Rerun the complete gate and Markdown checks against the post-documentation repository.
   * Details: .copilot-tracking/details/2026-09-15/ask-my-human-tight-mvp-details.md (Lines 953-972)
 
 ### [ ] Implementation Phase 5: Azure Deployment And Live Validation
@@ -224,20 +224,13 @@ workstreams pass scoped checks.
 <!-- parallelizable: false -->
 
 This release phase remains blocked until DR-01 through DR-05 have supplied or
-approved values. The repeatable automation for every step now exists
-(`scripts/deploy_azure.sh` for Steps 5.1 and 5.2, the gated matrix in
-`tests/e2e/test_live_call.py` for Step 5.3), so each step below is blocked only
-on tenant access, not on missing implementation. No step may be checked until it
-has actually executed against a real subscription.
+approved values.
 
 * [ ] Step 5.1: Resolve tenant-specific gates and review the Azure deployment with `what-if`.
-  * Status: Blocked on DR-01 through DR-05. Run `scripts/deploy_azure.sh what-if`.
   * Details: .copilot-tracking/details/2026-09-15/ask-my-human-tight-mvp-details.md (Lines 981-1005)
 * [ ] Step 5.2: Build and publish a Git-SHA-tagged image, deploy it with Bicep, and verify revision health, probes, and authentication boundaries.
-  * Status: Blocked on Step 5.1. Run `scripts/deploy_azure.sh deploy`.
   * Details: .copilot-tracking/details/2026-09-15/ask-my-human-tight-mvp-details.md (Lines 1006-1049)
 * [ ] Step 5.3: Execute the gated real-call outcome, race, cancellation, idempotency, retention, and telemetry matrix against the verified revision.
-  * Status: Blocked on Step 5.2. Run `RUN_LIVE_AZURE_TESTS=1 uv run pytest -m live`.
   * Details: .copilot-tracking/details/2026-09-15/ask-my-human-tight-mvp-details.md (Lines 1050-1085)
 
 ### [ ] Implementation Phase 6: Final Validation And Release Handoff

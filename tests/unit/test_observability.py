@@ -5,10 +5,13 @@ from collections.abc import Iterator, Sequence
 from uuid import UUID, uuid4
 
 import pytest
+from fastapi import FastAPI, Request
+from httpx import ASGITransport, AsyncClient
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import InMemoryMetricReader
 from opentelemetry.sdk.trace import ReadableSpan, TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor, SpanExporter, SpanExportResult
+from opentelemetry.trace import SpanKind
 
 from ask_my_human import observability
 from ask_my_human.application.ports import TelemetryOperation
@@ -20,6 +23,7 @@ from ask_my_human.observability import (
     DependencyOperation,
     SpanName,
     configure_observability,
+    instrument_app,
 )
 
 SENTINELS = (
@@ -186,7 +190,7 @@ def test_sensitive_values_never_enter_spans_metrics_or_exception_telemetry(
     assert failed_span.events == ()
 
 
-def test_setup_enables_asgi_and_excludes_psycopg2_instrumentation(
+def test_setup_excludes_content_capturing_automatic_instrumentation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     configured_options: dict[str, object] = {}
@@ -199,7 +203,80 @@ def test_setup_enables_asgi_and_excludes_psycopg2_instrumentation(
     telemetry = configure_observability(connection_string="InstrumentationKey=not-a-secret")
 
     assert isinstance(telemetry, AzureMonitorTelemetry)
-    assert configured_options["instrumentation_options"] == {
-        "fastapi": {"enabled": True},
-        "psycopg2": {"enabled": False},
-    }
+    options = configured_options["instrumentation_options"]
+    assert isinstance(options, dict)
+    assert all(value == {"enabled": False} for value in options.values())
+    assert {"azure_sdk", "httpx", "fastapi", "psycopg2", "requests"} <= options.keys()
+    assert configured_options["disable_logging"] is True
+    assert configured_options["disable_azure_core_tracing"] is True
+    assert configured_options["enable_live_metrics"] is False
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("fail", [False, True])
+async def test_actual_asgi_spans_are_correlated_and_content_free(fail: bool) -> None:
+    exporter = CapturingSpanExporter()
+    provider = TracerProvider()
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    tracer = provider.get_tracer("http-test")
+    app = FastAPI()
+
+    @app.post("/request")
+    async def request_handler(request: Request) -> dict[str, str]:
+        await request.body()
+        with tracer.start_as_current_span("child"):
+            pass
+        if fail:
+            raise RuntimeError(" ".join(SENTINELS))
+        return {"answer": SENTINELS[1]}
+
+    instrument_app(app, tracer=tracer)
+    instrument_app(app, tracer=tracer)
+    trace_id = "1234567890abcdef1234567890abcdef"
+    try:
+        async with AsyncClient(
+            transport=ASGITransport(app=app, raise_app_exceptions=False),
+            base_url="https://example.com",
+        ) as client:
+            response = await client.post(
+                "/request?token=" + SENTINELS[4],
+                content=" ".join(SENTINELS),
+                headers={
+                    "Authorization": SENTINELS[4],
+                    "traceparent": f"00-{trace_id}-1234567890abcdef-01",
+                },
+            )
+        assert response.status_code == (500 if fail else 200)
+        server_spans = [span for span in exporter.spans if span.kind is SpanKind.SERVER]
+        assert len(server_spans) == 1
+        server_span = server_spans[0]
+        assert server_span.context is not None
+        assert server_span.context.trace_id == int(trace_id, 16)
+        assert exporter.spans[0].parent == server_span.context
+        assert server_span.events == ()
+        assert server_span.status.description is None
+        captured = str(
+            [
+                (span.name, span.attributes, span.events, span.status.description)
+                for span in exporter.spans
+            ]
+        )
+        assert all(sentinel not in captured for sentinel in SENTINELS)
+        assert set(server_span.attributes or {}) == {
+            "http.request.method",
+            "http.response.status_code",
+        }
+    finally:
+        provider.shutdown()
+
+
+def test_port_operations_map_to_real_spans_and_dependency_metrics(
+    captured_telemetry: tuple[AzureMonitorTelemetry, CapturingSpanExporter, InMemoryMetricReader],
+) -> None:
+    telemetry, exporter, reader = captured_telemetry
+    for operation in TelemetryOperation:
+        with telemetry.span(operation, request_id=uuid4()):
+            pass
+        telemetry.dependency_failed(operation, error_code=ErrorCode.DEPENDENCY_FAILURE)
+    assert {span.name for span in exporter.spans} == {name.value for name in SpanName}
+    assert "askhuman_dependency_failures_total" in str(reader.get_metrics_data())

@@ -1,5 +1,6 @@
+import asyncio
 import json
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -13,7 +14,7 @@ from ask_my_human.errors import AskMyHumanError, ErrorCode
 from ask_my_human.security.acs_callback import AcsCallbackTokenValidator
 
 ISSUER = "https://issuer.example.com"
-AUDIENCE = "https://audience.example.com"
+AUDIENCE = "00000000-0000-4000-8000-000000000001"
 OPENID_URL = "https://openid.example.com/configuration"
 JWKS_URL = "https://openid.example.com/keys"
 
@@ -94,7 +95,7 @@ async def test_validates_signature_and_uses_cached_metadata_and_keys() -> None:
 async def test_refreshes_jwks_once_for_rotated_key() -> None:
     old_private_key, old_public_jwk = _key("old-key")
     new_private_key, new_public_jwk = _key("new-key")
-    del old_private_key
+    now = [100.0]
     request_urls: list[str] = []
     async with _client(
         [[old_public_jwk], [new_public_jwk]],
@@ -104,8 +105,11 @@ async def test_refreshes_jwks_once_for_rotated_key() -> None:
             client,
             AUDIENCE,
             openid_configuration_url=OPENID_URL,
+            clock=lambda: now[0],
         )
 
+        await validator.validate(f"Bearer {_token(old_private_key, 'old-key')}")
+        now[0] += 31
         await validator.validate(f"Bearer {_token(new_private_key, 'new-key')}")
 
     assert request_urls == [OPENID_URL, JWKS_URL, JWKS_URL]
@@ -204,3 +208,63 @@ async def test_rejects_missing_bearer_token_without_network_access() -> None:
 
     assert error.value.code is ErrorCode.UNAUTHENTICATED
     assert request_count == 0
+
+
+@pytest.mark.asyncio
+async def test_unknown_keys_and_failed_discovery_have_refresh_cooldowns() -> None:
+    private_key, public_jwk = _key("known")
+    urls: list[str] = []
+    async with _client(
+        [[public_jwk]], on_request=lambda request: urls.append(str(request.url))
+    ) as client:
+        validator = AcsCallbackTokenValidator(client, AUDIENCE, openid_configuration_url=OPENID_URL)
+        for key_id in ("unknown-1", "unknown-2", "unknown-3"):
+            with pytest.raises(AskMyHumanError) as error:
+                await validator.validate(f"Bearer {_token(private_key, key_id)}")
+            assert error.value.code is ErrorCode.UNAUTHENTICATED
+    assert urls == [OPENID_URL, JWKS_URL]
+
+    attempts = 0
+
+    def failure(request: httpx.Request) -> httpx.Response:
+        nonlocal attempts
+        attempts += 1
+        return httpx.Response(503)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(failure)) as client:
+        validator = AcsCallbackTokenValidator(client, AUDIENCE)
+        for _ in range(3):
+            with pytest.raises(AskMyHumanError):
+                await validator.validate(f"Bearer {_token(private_key, 'known')}")
+    assert attempts == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("slow", [False, True])
+async def test_stream_download_is_bounded_and_closed(slow: bool) -> None:
+    class Stream(httpx.AsyncByteStream):
+        def __init__(self) -> None:
+            self.closed = False
+            self.chunks = 0
+
+        async def __aiter__(self) -> AsyncIterator[bytes]:
+            for _ in range(100):
+                self.chunks += 1
+                if slow:
+                    await asyncio.sleep(0.01)
+                yield b" " * 65_536
+
+        async def aclose(self) -> None:
+            self.closed = True
+
+    stream = Stream()
+    private_key, _ = _key("known")
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(lambda request: httpx.Response(200, stream=stream))
+    ) as client:
+        validator = AcsCallbackTokenValidator(client, AUDIENCE, request_timeout_seconds=0.025)
+        with pytest.raises(AskMyHumanError) as error:
+            await validator.validate(f"Bearer {_token(private_key, 'known')}")
+    assert error.value.code is ErrorCode.DEPENDENCY_FAILURE
+    assert stream.closed
+    assert stream.chunks <= 5

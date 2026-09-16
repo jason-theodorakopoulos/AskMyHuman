@@ -16,10 +16,12 @@ _APPLICATION_ID_CLAIMS = (
     "azp",
     "http://schemas.microsoft.com/identity/claims/appid",
 )
-_SUBJECT_ID_CLAIMS = (
+_OBJECT_ID_CLAIMS = (
     "http://schemas.microsoft.com/identity/claims/objectidentifier",
-    "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier",
     "oid",
+)
+_SUBJECT_ID_CLAIMS = (
+    "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier",
     "sub",
 )
 _ROLE_CLAIMS = (
@@ -48,12 +50,19 @@ def parse_container_apps_principal(
             raise _unauthenticated()
         claim_type = claim.get("typ")
         claim_value = claim.get("val")
-        if not isinstance(claim_type, str) or not isinstance(claim_value, str):
+        if (
+            not isinstance(claim_type, str)
+            or not isinstance(claim_value, str)
+            or not claim_type.strip()
+            or not claim_value.strip()
+        ):
             raise _unauthenticated()
         claim_values.setdefault(claim_type, []).append(claim_value)
 
     application_id = _single_claim(claim_values, _APPLICATION_ID_CLAIMS)
-    subject_id = _single_claim(claim_values, _SUBJECT_ID_CLAIMS)
+    subject_id = _single_claim(claim_values, _OBJECT_ID_CLAIMS) or _single_claim(
+        claim_values, _SUBJECT_ID_CLAIMS
+    )
     if application_id is None or subject_id is None:
         raise _unauthenticated()
 
