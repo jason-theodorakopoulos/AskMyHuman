@@ -3,7 +3,7 @@
 import asyncio
 import base64
 import json
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
@@ -127,7 +127,10 @@ class Composition:
     async def validate_token(self, token: str) -> None:
         self.validated_tokens.append(token)
 
-    def components(self) -> ApplicationComponents:
+    def components(
+        self,
+        closers: tuple[Callable[[], Awaitable[None]], ...] | None = None,
+    ) -> ApplicationComponents:
         async def close_acs() -> None:
             self.closed.append("acs")
 
@@ -146,7 +149,7 @@ class Composition:
                 purge_interval_seconds=0.01,
             ),
             validate_callback_token=self.validate_token,
-            closers=(close_acs, close_http),
+            closers=closers if closers is not None else (close_acs, close_http),
         )
 
     def app(self) -> FastAPI:
@@ -332,11 +335,9 @@ async def test_failing_client_close_still_closes_every_client(composition: Compo
     async def close_http() -> None:
         composition.closed.append("http")
 
-    components = composition.components()
-    components.closers = (failing_close, close_http)
-    app = create_app(components)
+    app = create_app(composition.components(closers=(failing_close, close_http)))
 
-    with pytest.raises(BaseExceptionGroup):
+    with pytest.raises(ExceptionGroup):
         async with app.router.lifespan_context(app):
             pass
 

@@ -7,7 +7,7 @@ from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 from contextlib import AsyncExitStack, asynccontextmanager, suppress
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 import httpx
 from azure.communication.callautomation.aio import CallAutomationClient
@@ -36,6 +36,10 @@ from ask_my_human.telephony.events import parse_callback_event
 PRINCIPAL_HEADER = "x-ms-client-principal"
 
 _cached_app: FastAPI | None = None
+
+if TYPE_CHECKING:
+    # Declared for readers and type checkers; built on first access by __getattr__.
+    app: FastAPI
 
 
 class PoolLifecycle(Protocol):
@@ -217,14 +221,14 @@ def create_app(components: ApplicationComponents | None = None) -> FastAPI:
 
 
 async def _close_all(closers: Sequence[Callable[[], Awaitable[None]]]) -> None:
-    failures: list[BaseException] = []
+    failures: list[Exception] = []
     for close in closers:
         try:
             await close()
         except Exception as failure:  # Close every remaining client before reporting.
             failures.append(failure)
     if failures:
-        raise BaseExceptionGroup("client shutdown failed", failures)
+        raise ExceptionGroup("client shutdown failed", failures)
 
 
 async def _stop_tasks(shutdown: ShutdownSignal, tasks: Sequence[asyncio.Task[None]]) -> None:
