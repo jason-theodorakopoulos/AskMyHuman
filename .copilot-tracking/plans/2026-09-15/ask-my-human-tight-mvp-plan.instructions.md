@@ -227,9 +227,9 @@ workstreams pass scoped checks.
 This release phase remains blocked until DR-01 through DR-05 have supplied or
 approved values.
 
-* [ ] Step 5.1: Resolve tenant-specific gates and review the Azure deployment with `what-if`.
+* [x] Step 5.1: Resolve tenant-specific gates and review the Azure deployment with `what-if`.
   * Details: .copilot-tracking/details/2026-09-15/ask-my-human-tight-mvp-details.md (Lines 981-1005)
-* [ ] Step 5.2: Build and publish a Git-SHA-tagged image, deploy it with Bicep, and verify revision health, probes, and authentication boundaries.
+* [x] Step 5.2: Build and publish a Git-SHA-tagged image, deploy it with Bicep, and verify revision health, probes, and authentication boundaries.
   * Details: .copilot-tracking/details/2026-09-15/ask-my-human-tight-mvp-details.md (Lines 1006-1049)
 * [ ] Step 5.3: Execute the gated real-call outcome, race, cancellation, idempotency, retention, and telemetry matrix against the verified revision.
   * Details: .copilot-tracking/details/2026-09-15/ask-my-human-tight-mvp-details.md (Lines 1050-1085)

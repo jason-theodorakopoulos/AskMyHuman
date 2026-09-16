@@ -160,3 +160,63 @@ authentication smoke checks, failure handling, and separately gated live-test
 step. DR-01 through DR-05 remain tenant-owned external release inputs with
 explicit resolution gates in Step 5.1, not unplanned implementation gaps. DD-01
 and DD-02 remain intentional, research-backed decisions.
+
+## Phase 5 Release Record: 2026-09-16
+
+### Resolved Release Gates
+
+* DR-01: ACS provisioned in the target tenant as `askmyhuman-acs` with a United States
+  data location, a system-assigned identity, and a purchased outbound-capable US
+  geographic number at one US dollar per month.
+* DR-02: Entra applications `AskMyHuman-API` and `AskMyHuman-Agent` created, the
+  `AskHuman.Invoke` application role assigned, and admin consent granted.
+* DR-03: Retention confirmed at twenty-four hours for request rows and thirty days for
+  telemetry tables.
+* DR-04: Target subscription, resource group `rg-askmyhuman`, region `swedencentral`,
+  and a Basic-SKU registry `askmyhumanacr` confirmed.
+* DR-05: The MCP client timeout floor of two hundred twenty-five seconds confirmed.
+
+### Implementation Deviations
+
+* DD-07: ACS access granted through Communication and Email Service Owner.
+  * Plan specifies: A dedicated ACS data-plane role for the container identity.
+  * Implementation differs: ACS publishes no dataActions model, and the tenant exposes
+    only the management-plane owner role.
+  * Rationale: The planned role definition does not exist, so deployment failed with
+    `RoleDefinitionDoesNotExist`.
+* DD-08: Role assignment names derive from identity resource ids.
+  * Plan specifies: Names derived from the resolved principal id.
+  * Implementation differs: Names derive from the identity resource id.
+  * Rationale: Principal ids are unresolvable before deployment, so what-if classified
+    the assignments as Unsupported and the strict review gate rejected the change set.
+* DD-09: The image builds without BuildKit mounts.
+  * Plan specifies: Cache and bind mounts for dependency resolution.
+  * Implementation differs: Plain copy and run layers.
+  * Rationale: ACR Tasks runs the classic builder, which rejects `--mount`.
+* DD-10: Verification accepts the running-at-max-scale revision state.
+  * Plan specifies: A strictly `Running` revision.
+  * Implementation differs: Both `Running` and `RunningAtMaxScale` are accepted.
+  * Rationale: A single fixed replica always reports `RunningAtMaxScale`.
+
+### Deployment Evidence
+
+* Source sha `50c7926f61a8567d87e996d6b7ecffa955c6f5fc`.
+* Image `askmyhumanacr.azurecr.io/ask-my-human@sha256:56c5f46f5d4413f56e248df23f6bde1aadaf03ab42cc5dcb468769071436186c`.
+* Revision `askmyhuman--50c7926f61a8-56c5f46f5d44`, active, healthy, one hundred percent traffic.
+* Endpoint `https://askmyhuman.bravehill-2df3a5af.swedencentral.azurecontainerapps.io`.
+* Authentication boundaries verified; no paid calls were authorized or placed.
+
+### Suggested Follow-On Work
+
+* WI-06: Rotate the Azure Communication Services access key and the deployment service
+  principal secret (high priority, small effort).
+  * Source: Phase 5, Step 5.1
+  * Dependency: None; both values were exposed during interactive setup
+* WI-07: Confirm outbound routing from the United States number to the Greek mobile
+  destination before the paid live matrix (high priority, small effort).
+  * Source: Phase 5, Step 5.3
+  * Dependency: Carrier routing confirmation from the provider
+* WI-08: Revoke the temporary Application Administrator role granted for deployment
+  (medium priority, small effort).
+  * Source: Phase 5, Step 5.1
+  * Dependency: Completion of Entra application wiring

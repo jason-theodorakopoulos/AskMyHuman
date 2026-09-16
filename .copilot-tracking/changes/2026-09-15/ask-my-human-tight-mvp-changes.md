@@ -298,3 +298,46 @@ historical implementation results or user-owned release-resumption record.
   Ruff, strict mypy, lock/frozen sync, schema drift, Compose, image runtime smoke,
   shell checks, and all Bicep templates/parameters passed. The final review log
   records the required post-documentation rerun and any remaining external gates.
+
+## Phase 5 Deployment Execution: 2026-09-16
+
+Steps 5.1 and 5.2 completed against subscription `ME-MngEnvMCAP721432-dkalamaras-1`,
+resource group `rg-askmyhuman`, region `swedencentral`. Step 5.3 remains open.
+
+### Modified
+
+* infra/modules/communications-acs-role-assignment.bicep - Names the assignment from
+  the identity resource id and uses the existing Communication and Email Service Owner
+  role definition.
+* infra/modules/communications.bicep - Threads the container identity resource id
+  through to the ACS role assignment.
+* infra/modules/container-app-acr-role-assignment.bicep - Names the AcrPull assignment
+  from the principal resource id.
+* infra/modules/container-app.bicep - Passes the identity resource id to the registry
+  pull role assignment.
+* infra/main.bicep - Supplies the container identity resource id to the communications
+  module.
+* Dockerfile - Builds without BuildKit-only mount options so classic ACR Tasks succeed.
+* scripts/deploy_azure.sh - Adds bounded per-command Azure timeouts, scopes what-if
+  property paths to property changes, accepts resource names containing spaces and
+  parentheses, and treats a running-at-max-scale revision as ready.
+* src/ask_my_human/application/service.py - Hangs up orphaned calls and skips the
+  redundant hang-up once a request is responded.
+* tests/e2e/test_live_call.py - Binds deployment evidence to source sha, image digest,
+  revision suffix, authentication proof, and the observed running state.
+* tests/unit/test_deploy_script.py - Covers container probe paths in the what-if fixture.
+* .env.example - Documents the immutable ACS audience and the callback URL.
+
+## Additional or Deviating Changes
+
+* Substituted the Communication and Email Service Owner role for the originally planned
+  ACS data role.
+  * Reason: The planned role definition does not exist; ACS exposes no dataActions model,
+    and this is the only ACS role available in the tenant.
+* Removed BuildKit cache and bind mounts from the image build.
+  * Reason: ACR Tasks uses the classic builder, which rejects the `--mount` option.
+* Derived role assignment names from identity resource ids rather than principal ids.
+  * Reason: Principal ids are unknown before deployment, so what-if reported the
+    assignments as Unsupported and the strict review filter rejected the change set.
+* Relaxed the deploy script verification gate to accept `RunningAtMaxScale`.
+  * Reason: With a single fixed replica, Container Apps never reports plain `Running`.
