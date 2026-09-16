@@ -220,3 +220,40 @@ and DD-02 remain intentional, research-backed decisions.
   (medium priority, small effort).
   * Source: Phase 5, Step 5.1
   * Dependency: Completion of Entra application wiring
+
+## Step 5.3 Blocker Analysis: 2026-09-16
+
+### Unaddressed Research Items
+
+* DR-13: The live harness requires independent provider evidence, but no accepted
+  provider source exists in the deployed system.
+  * Source: .copilot-tracking/research/subagents/2026-09-16/live-harness.md (External Gates)
+  * Reason: The harness accepts `acs-provider` or `acs-http-dependency` evidence. No Bicep
+    module configures any diagnostic setting, so Communication Services call logs never
+    reach Log Analytics. `configure_telemetry` disables every auto-instrumentation option,
+    including `azure_sdk` and `httpx`, so no dependency rows record outbound calls.
+  * Impact: high
+  * Resolution: Phase 5A, Steps 5A.1 and 5A.2.
+* DR-14: No tooling emits the telemetry export watermark or the isolated database binding
+  that the approval document requires.
+  * Source: tests/e2e/test_live_call.py `_Approval` and `_TelemetryEvidence`
+  * Reason: Planning treated these as operator inputs without specifying who produces them.
+  * Impact: high
+  * Resolution: Phase 5A, Step 5A.3.
+* DR-15: Carrier scenario arrangements were never specified, and the harness fails closed
+  on unsupported cases rather than skipping them.
+  * Source: .copilot-tracking/details/2026-09-15/ask-my-human-tight-mvp-details.md Step 5.3
+  * Reason: Busy and decline depend on carrier signaling that may be unavailable.
+  * Impact: medium
+  * Resolution: Phase 5A, Step 5A.4.
+
+### Implementation Deviations
+
+* DD-11: Provider evidence comes from Communication Services diagnostic logs rather than
+  application dependency telemetry.
+  * Plan specifies: Either accepted provider source.
+  * Implementation differs: Only the diagnostic log path is built.
+  * Rationale: Provider logs are authoritative and independent of the code under test,
+    and they carry call metadata rather than prompt or spoken answer content. Enabling
+    `azure_sdk` or `httpx` instrumentation would weaken evidence independence and risk
+    recording request URLs into telemetry that the privacy scenario audits.

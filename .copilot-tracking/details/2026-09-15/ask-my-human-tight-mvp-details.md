@@ -1138,3 +1138,132 @@ Success criteria:
 * Full local validation and gated Azure live-call validation pass.
 * A final post-edit repository gate and release-evidence review pass after all files exist.
 * No retry, escalation, extra channel, multi-human routing, asynchronous resume, UI, Voice Live relay, queue, or second deployable service enters the MVP.
+
+## Implementation Phase 5A: Live Call Evidence Enablement
+
+<!-- parallelizable: false -->
+
+Step 5.3 cannot execute because the live harness requires independent provider
+and telemetry evidence that no deployed component currently produces. This phase
+creates those evidence sources. It is a prerequisite for Step 5.3, not a
+replacement for it, and it authorizes no paid call.
+
+Root cause: the harness accepts provider evidence from `acs-provider` or
+`acs-http-dependency`. Neither source exists today. No Bicep module configures a
+diagnostic setting on any resource, so Azure Communication Services call logs
+never reach Log Analytics. Separately, `configure_telemetry` disables every
+auto-instrumentation option, including `azure_sdk` and `httpx`, so no
+`AppDependencies` rows are recorded for outbound Communication Services calls.
+
+### Step 5A.1: Route Communication Services Call Logs To Log Analytics
+
+Add a diagnostic setting on the existing Communication Services resource that
+sends call automation and call summary logs to the workspace created by the
+observability module. Prefer the provider log path over application dependency
+instrumentation: provider logs are authoritative, independent of the code under
+test, and carry call metadata rather than prompt or answer content.
+
+Files:
+
+* infra/modules/communications.bicep - Add a `Microsoft.Insights/diagnosticSettings`
+  resource scoped to the Communication Services resource.
+* infra/modules/observability.bicep - Export the Log Analytics workspace resource id.
+* infra/main.bicep - Pass the workspace resource id into the communications module.
+* infra/environments/dev.bicepparam - No change expected; confirm no new parameter leaks a secret.
+
+Log categories to enable:
+
+* `CallAutomationOperationalLogs` for create-call attempts and correlation identifiers.
+* `CallSummary` for terminal call disposition and carrier-reported cause codes.
+* `CallDiagnostics` when the resource exposes it, for silence and ring-out signals.
+
+Success criteria:
+
+* `what-if` reports the diagnostic setting as a create with no unsupported changes.
+* After a test call, the workspace contains rows correlating an operation identifier
+  to the Communication Services call identifier.
+* No log category carries recognized speech text or the prompt body.
+
+Dependencies:
+
+* Step 5.2 verified deployment
+
+### Step 5A.2: Build The Provider Evidence Harvester
+
+Add an operator script that queries the Log Analytics workspace over a bounded
+time window and writes a `_ProviderEvidence` document. The script reads only; it
+never reads the application database and never invents identities.
+
+Files:
+
+* scripts/harvest_live_evidence.py - New operator script.
+* tests/unit/test_harvest_live_evidence.py - Offline coverage over recorded query payloads.
+
+Required behavior:
+
+* Accept a window start, a revision, and a record string; emit `source` as `acs-provider`.
+* Set `complete_through` from the workspace ingestion watermark, never from the clock,
+  so the harness can reject partial windows.
+* Map each create-call operation to an `_Attempt` with `request_id`, `attempt_id`, and `call_id`.
+* Map accepted callback deliveries to `_Delivery` entries, including deliveries received
+  after terminal completion, which the duplicate-callback scenario requires.
+* Emit `_PendingJoin` entries with `observed_at` for the concurrent replay scenario.
+* Fail closed with a nonzero exit when the window is incompletely ingested.
+
+Success criteria:
+
+* The emitted document validates against the harness models without edits.
+* Unit tests cover the incomplete-window rejection and the correlation mapping.
+* The script never writes secrets or spoken content to its output.
+
+Dependencies:
+
+* Step 5A.1 provider logs flowing
+
+### Step 5A.3: Provision The Isolated Live Database And Telemetry Watermark
+
+The approval binds `database_sha256` and `database_isolated`. Live scenarios seed
+sentinel values and exercise a destructive purge path, so they must not run against
+the database serving other work.
+
+Actions:
+
+* Create a dedicated database on the existing flexible server for live execution.
+* Point the verified revision at it for the duration of the matrix, then restore it.
+* Record the SHA-256 of the full connection string for the approval document.
+* Extend `scripts/harvest_live_evidence.py` with a telemetry mode that emits a
+  `_TelemetryEvidence` document from the workspace export watermark.
+
+Success criteria:
+
+* The live database is empty before the matrix and is not the default application database.
+* The telemetry document reports a `complete_through` that is not in the future.
+* Restoring the original configuration produces a healthy revision.
+
+Dependencies:
+
+* Step 5A.2 harvester
+
+### Step 5A.4: Arrange And Record Carrier Scenario Setup
+
+The harness fails closed on carrier cases and does not silently pass them. Each
+selected scenario needs an operator setup record naming how the condition is produced.
+
+Scenarios needing explicit arrangement:
+
+* Initial silence: answer and remain silent through the recognition window.
+* No answer: allow ring-out without answering.
+* Busy: place the destination on an active call, or record the case as unsupported.
+* Decline: reject the call from the handset, or record the case as unsupported.
+* Mid-call disconnect: hang up after connection and before recognition completes.
+* Forced deadline: set `LIVE_DEADLINE_SCENARIO_READY` only when the arrangement is real.
+
+Success criteria:
+
+* Every scenario key in the approval maps to a recorded arrangement.
+* Unsupported carrier cases are approved in writing as release limitations rather than skipped.
+* Outbound routing from the source number to the destination is confirmed before the matrix.
+
+Dependencies:
+
+* Step 5A.3 isolated database and telemetry evidence

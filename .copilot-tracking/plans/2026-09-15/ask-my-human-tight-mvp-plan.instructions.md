@@ -73,7 +73,8 @@ flowchart TD
   II --> R
   R --> V[Phase 4: local validation and documentation]
   V --> D[Phase 5: Azure deployment and live calls]
-  D --> FV[Phase 6: final validation and release handoff]
+  D --> E[Phase 5A: live call evidence enablement]
+  E --> FV[Phase 6: final validation and release handoff]
 ```
 
 Phase 1A and Phase 1B run concurrently. Within those phases, every workstream
@@ -233,6 +234,28 @@ approved values.
   * Details: .copilot-tracking/details/2026-09-15/ask-my-human-tight-mvp-details.md (Lines 1006-1049)
 * [ ] Step 5.3: Execute the gated real-call outcome, race, cancellation, idempotency, retention, and telemetry matrix against the verified revision.
   * Details: .copilot-tracking/details/2026-09-15/ask-my-human-tight-mvp-details.md (Lines 1050-1085)
+  * Blocked 2026-09-16: Phase 5A must complete first. The harness requires independent
+    provider and telemetry evidence that no deployed component currently emits.
+
+### [ ] Implementation Phase 5A: Live Call Evidence Enablement
+
+<!-- parallelizable: false -->
+
+Steps 5.1 and 5.2 deployed and verified the revision, but Step 5.3 cannot run.
+The live harness demands operator-supplied provider and telemetry exports, and
+neither accepted provider source exists: no diagnostic setting routes
+Communication Services call logs to Log Analytics, and every auto-instrumentation
+option is disabled, so no dependency rows record outbound calls. This phase
+builds the missing evidence sources and authorizes no paid call.
+
+* [ ] Step 5A.1: Route Communication Services call automation and summary logs to the Log Analytics workspace.
+  * Details: .copilot-tracking/details/2026-09-15/ask-my-human-tight-mvp-details.md (Lines 1158-1190)
+* [ ] Step 5A.2: Build a read-only provider evidence harvester that emits harness-valid attempt, delivery, and pending-join exports.
+  * Details: .copilot-tracking/details/2026-09-15/ask-my-human-tight-mvp-details.md (Lines 1191-1222)
+* [ ] Step 5A.3: Provision the isolated live database and emit the telemetry export watermark.
+  * Details: .copilot-tracking/details/2026-09-15/ask-my-human-tight-mvp-details.md (Lines 1223-1246)
+* [ ] Step 5A.4: Arrange and record carrier scenario setup, or approve unsupported cases as release limitations.
+  * Details: .copilot-tracking/details/2026-09-15/ask-my-human-tight-mvp-details.md (Lines 1247-1269)
 
 ### [ ] Implementation Phase 6: Final Validation And Release Handoff
 
