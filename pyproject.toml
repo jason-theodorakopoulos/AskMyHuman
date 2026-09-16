@@ -48,6 +48,7 @@ packages = ["src/ask_my_human"]
 addopts = "--strict-markers -m 'not live'"
 asyncio_mode = "auto"
 markers = ["live: requires live Azure resources"]
+pythonpath = ["."]
 testpaths = ["tests"]
 
 [tool.coverage.run]
