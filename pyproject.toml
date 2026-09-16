@@ -66,3 +66,6 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 python_version = "3.12"
 strict = true
 files = ["src", "tests"]
+# Test folders carry no __init__.py, so mypy needs paths to disambiguate the two conftest modules.
+explicit_package_bases = true
+mypy_path = ["src", "tests"]
