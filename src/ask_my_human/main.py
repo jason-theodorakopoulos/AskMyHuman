@@ -85,13 +85,27 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     telemetry = configure_observability()
 
     credential = DefaultAzureCredential()
-    http_client = httpx.AsyncClient()
-    call_automation_client = CallAutomationClient(str(settings.acs_endpoint), credential)
-    gateway = AcsCallAutomationGateway.from_settings(call_automation_client, settings)
-    callback_validator = AcsCallbackTokenValidator(http_client, str(settings.acs_callback_audience))
+    try:
+        http_client = httpx.AsyncClient()
+        try:
+            call_automation_client = CallAutomationClient(str(settings.acs_endpoint), credential)
+            try:
+                gateway = AcsCallAutomationGateway.from_settings(call_automation_client, settings)
+                callback_validator = AcsCallbackTokenValidator(
+                    http_client, str(settings.acs_callback_audience)
+                )
 
-    pool = PostgresPool(settings.database_url.get_secret_value())
-    await pool.open()
+                pool = PostgresPool(settings.database_url.get_secret_value())
+                await pool.open()
+            except BaseException:
+                await call_automation_client.close()
+                raise
+        except BaseException:
+            await http_client.aclose()
+            raise
+    except BaseException:
+        await credential.close()
+        raise
     repository = PostgresRequestRepository(pool.pool)
 
     clock = _SystemClock()
