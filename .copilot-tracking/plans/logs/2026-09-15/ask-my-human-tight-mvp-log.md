@@ -145,10 +145,6 @@ implementation plan.
   * Source: DD-02
   * Dependency: Load evidence exceeding one-request-at-a-time MVP capacity
 
-* WI-06: Clear the pre-existing strict mypy failures in Phase 0 and Phase 1 modules and tests (medium priority, small effort).
-  * Source: Phase 2, Step 2.1 validation
-  * Dependency: None; `uv run mypy src tests` already reported 36 errors in eight files before Phase 2 began, and the Phase 2 files add none.
-
 ## Validation Status
 
 Validated on 2026-09-15. Pass.
@@ -184,4 +180,3 @@ Phase 5 implementation is complete and Phase 5 execution is blocked.
   callback path is excluded (low priority, small effort).
   * Source: `infra/modules/container-app.bicep`
   * Dependency: Step 5.2
-

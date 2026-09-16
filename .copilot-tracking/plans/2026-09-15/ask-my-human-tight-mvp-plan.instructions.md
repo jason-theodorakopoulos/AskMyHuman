@@ -109,7 +109,7 @@ shared files. Dependency changes return to the foundation owner, who regenerates
 
 ## Implementation Checklist
 
-### [ ] Implementation Phase 0: Foundation And Contract Freeze
+### [x] Implementation Phase 0: Foundation And Contract Freeze
 
 <!-- parallelizable: false -->
 
@@ -125,7 +125,7 @@ commit before feature branches diverge.
   * Details: .copilot-tracking/details/2026-09-15/ask-my-human-tight-mvp-details.md (Lines 136-181)
 * [x] Step 0.4: Freeze Bicep module inputs, outputs, secure-value rules, and external deployment inputs.
   * Details: .copilot-tracking/details/2026-09-15/ask-my-human-tight-mvp-details.md (Lines 182-216)
-* [ ] Step 0.5: Run contract, domain, configuration, schema, lock, lint, and type validation; publish the foundation commit.
+* [x] Step 0.5: Run contract, domain, configuration, schema, lock, lint, and type validation; publish the foundation commit.
   * Details: .copilot-tracking/details/2026-09-15/ask-my-human-tight-mvp-details.md (Lines 217-236)
 
 ### [x] Implementation Phase 1A: Parallel Application Workstreams
@@ -194,29 +194,29 @@ workstreams pass scoped checks.
   * Owner: Infrastructure integrator
   * Details: .copilot-tracking/details/2026-09-15/ask-my-human-tight-mvp-details.md (Lines 780-811)
 
-### [ ] Implementation Phase 3: Image, Local Environment, And CI
+### [x] Implementation Phase 3: Image, Local Environment, And CI
 
 <!-- parallelizable: false -->
 
-* [ ] Step 3.1: Build the pinned runtime image and local Compose PostgreSQL environment.
+* [x] Step 3.1: Build the pinned runtime image and local Compose PostgreSQL environment.
   * Owner: Release developer
   * Details: .copilot-tracking/details/2026-09-15/ask-my-human-tight-mvp-details.md (Lines 819-849)
-* [ ] Step 3.2: Add CI for schema drift, formatting, lint, typing, non-live tests, coverage, image build, and Bicep build.
+* [x] Step 3.2: Add CI for schema drift, formatting, lint, typing, non-live tests, coverage, image build, and Bicep build.
   * Owner: Release developer
   * Details: .copilot-tracking/details/2026-09-15/ask-my-human-tight-mvp-details.md (Lines 850-870)
-* [ ] Step 3.3: Create the gated live-test harness, including controlled backdated-row retention verification.
+* [x] Step 3.3: Create the gated live-test harness, including controlled backdated-row retention verification.
   * Owner: Release developer
   * Details: .copilot-tracking/details/2026-09-15/ask-my-human-tight-mvp-details.md (Lines 871-893)
 
-### [ ] Implementation Phase 4: Complete Local Validation And Documentation
+### [x] Implementation Phase 4: Complete Local Validation And Documentation
 
 <!-- parallelizable: false -->
 
-* [ ] Step 4.1: Run the pre-documentation local merge gate and correct isolated defects within their owning workstreams.
+* [x] Step 4.1: Run the pre-documentation local merge gate and correct isolated defects within their owning workstreams.
   * Details: .copilot-tracking/details/2026-09-15/ask-my-human-tight-mvp-details.md (Lines 898-924)
-* [ ] Step 4.2: Update README.md with only verified behavior, commands, deployment inputs, scope, and the Play-and-Recognize decision.
+* [x] Step 4.2: Update README.md with only verified behavior, commands, deployment inputs, scope, and the Play-and-Recognize decision.
   * Details: .copilot-tracking/details/2026-09-15/ask-my-human-tight-mvp-details.md (Lines 925-952)
-* [ ] Step 4.3: Rerun the complete gate and Markdown checks against the post-documentation repository.
+* [x] Step 4.3: Rerun the complete gate and Markdown checks against the post-documentation repository.
   * Details: .copilot-tracking/details/2026-09-15/ask-my-human-tight-mvp-details.md (Lines 953-972)
 
 ### [ ] Implementation Phase 5: Azure Deployment And Live Validation
