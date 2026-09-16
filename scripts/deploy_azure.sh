@@ -111,12 +111,15 @@ deploy_bicep() {
     --output tsv
 }
 
+container_app_override() {
+  # An explicit CONTAINER_APP_NAME always wins over any lookup.
+  [[ -n "${CONTAINER_APP_NAME:-}" ]] || return 1
+  printf '%s' "$CONTAINER_APP_NAME"
+}
+
 deployed_container_app_name() {
   # The name of the app this run just deployed, taken from the deployment outputs.
-  if [[ -n "${CONTAINER_APP_NAME:-}" ]]; then
-    printf '%s' "$CONTAINER_APP_NAME"
-    return
-  fi
+  container_app_override && return
   az deployment group show \
     --name "$(deployment_name)" \
     --resource-group "$AZURE_RESOURCE_GROUP" \
@@ -127,10 +130,7 @@ deployed_container_app_name() {
 existing_container_app_name() {
   # The name of the already deployed app, resolved from the resource group so that
   # verification never depends on the checked-out commit.
-  if [[ -n "${CONTAINER_APP_NAME:-}" ]]; then
-    printf '%s' "$CONTAINER_APP_NAME"
-    return
-  fi
+  container_app_override && return
   local names count
   names="$(az containerapp list --resource-group "$AZURE_RESOURCE_GROUP" \
     --query '[].name' --output tsv)"
