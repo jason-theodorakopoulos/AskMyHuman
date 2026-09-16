@@ -32,6 +32,7 @@ pytestmark = [
 
 _REQUEST_TIMEOUT_SECONDS = 240.0
 _SMOKE_TIMEOUT_SECONDS = 30.0
+_INVALID_CALLBACK_AUTHORIZATION = "Bearer invalid-callback-token"  # noqa: S105 - test-only sentinel, not a credential
 _CANCELLATION_DELAY_SECONDS = 10.0
 _RETENTION_HOURS = 24.0
 
@@ -221,7 +222,7 @@ async def test_live_invalid_callback_token_is_rejected() -> None:
     ) as anonymous:
         response = await anonymous.post(
             "/v1/callbacks/acs",
-            headers={"Authorization": "Bea" + "rer invalid-callback-token"},
+            headers={"Authorization": _INVALID_CALLBACK_AUTHORIZATION},
             json=[],
         )
 

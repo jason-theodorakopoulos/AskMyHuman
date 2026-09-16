@@ -50,6 +50,7 @@ require_environment() {
   fi
   command -v az >/dev/null || fail "the Azure CLI is required"
   command -v git >/dev/null || fail "git is required"
+  command -v curl >/dev/null || fail "curl is required"
 }
 
 git_sha() {
@@ -105,9 +106,8 @@ deploy_bicep() {
     --output tsv
 }
 
-container_app_name() {
-  # After a deployment the name comes from this run's outputs. Standalone verification
-  # must not depend on the checked-out commit, so it resolves the app directly.
+deployed_container_app_name() {
+  # The name of the app this run just deployed, taken from the deployment outputs.
   if [[ -n "${CONTAINER_APP_NAME:-}" ]]; then
     printf '%s' "$CONTAINER_APP_NAME"
     return
@@ -119,7 +119,9 @@ container_app_name() {
     --output tsv
 }
 
-discover_container_app_name() {
+existing_container_app_name() {
+  # The name of the already deployed app, resolved from the resource group so that
+  # verification never depends on the checked-out commit.
   if [[ -n "${CONTAINER_APP_NAME:-}" ]]; then
     printf '%s' "$CONTAINER_APP_NAME"
     return
@@ -128,7 +130,7 @@ discover_container_app_name() {
   names="$(az containerapp list --resource-group "$AZURE_RESOURCE_GROUP" \
     --query '[].name' --output tsv)"
   [[ -n "$names" ]] || fail "no container app exists in ${AZURE_RESOURCE_GROUP}"
-  count="$(printf '%s\n' "$names" | wc -l)"
+  count="$(printf '%s\n' "$names" | grep -c .)"
   ((count == 1)) || fail "set CONTAINER_APP_NAME; ${AZURE_RESOURCE_GROUP} holds ${count} container apps"
   printf '%s' "$names"
 }
@@ -201,7 +203,7 @@ main() {
       build_image
       deploy_bicep
       local app
-      app="$(container_app_name)"
+      app="$(deployed_container_app_name)"
       verify_revision "$app"
       verify_authentication_boundary "$(service_url "$app")"
       log "Deployment verified. Live calls may now run against $(service_url "$app")"
@@ -211,7 +213,7 @@ main() {
       # pins an expectation by exporting CONTAINER_IMAGE.
       ((CONTAINER_IMAGE_EXPLICIT == 1)) || EXPECTED_IMAGE=""
       local existing
-      existing="$(discover_container_app_name)"
+      existing="$(existing_container_app_name)"
       verify_revision "$existing"
       verify_authentication_boundary "$(service_url "$existing")"
       ;;
