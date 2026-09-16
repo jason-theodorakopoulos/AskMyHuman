@@ -1,9 +1,10 @@
 """Typed service settings; this is the sole environment-variable boundary."""
 
 import re
+from typing import Annotated
 
 from pydantic import AnyHttpUrl, Field, SecretStr, field_validator, model_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 E164_PATTERN = re.compile(r"^\+[1-9]\d{1,14}$")
 
@@ -23,8 +24,8 @@ class Settings(BaseSettings):
     acs_callback_audience: AnyHttpUrl
     entra_tenant_id: str
     entra_client_id: str
-    authorized_agent_app_ids: tuple[str, ...]
-    mcp_allowed_hosts: tuple[str, ...]
+    authorized_agent_app_ids: Annotated[tuple[str, ...], NoDecode]
+    mcp_allowed_hosts: Annotated[tuple[str, ...], NoDecode]
     locale: str = "en-US"
     voice_name: str = "en-US-AvaMultilingualNeural"
     deadline_seconds: int = Field(default=210, gt=0)

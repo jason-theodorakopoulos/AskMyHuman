@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from collections.abc import Iterator
 from contextlib import contextmanager
 from enum import StrEnum
@@ -197,15 +198,23 @@ class AzureMonitorTelemetry:
 
 
 def configure_observability(*, connection_string: str | None = None) -> AzureMonitorTelemetry:
-    """Configure Azure Monitor before the ASGI application begins serving."""
-    options: dict[str, object] = {
-        "instrumentation_options": {
-            "fastapi": {"enabled": True},
-            "psycopg2": {"enabled": False},
-        },
-        "resource": Resource.create({"service.name": "ask-my-human"}),
-    }
-    if connection_string is not None:
-        options["connection_string"] = connection_string
-    configure_azure_monitor(**options)
+    """Configure Azure Monitor before the ASGI application begins serving.
+
+    Local development and CI image validation run without an Application
+    Insights resource. Skip Azure Monitor wiring when no connection string is
+    supplied or configured through the environment so the process still starts
+    and records telemetry against the default in-process providers only.
+    """
+    resolved_connection_string = connection_string or os.environ.get(
+        "APPLICATIONINSIGHTS_CONNECTION_STRING"
+    )
+    if resolved_connection_string:
+        configure_azure_monitor(
+            connection_string=resolved_connection_string,
+            instrumentation_options={
+                "fastapi": {"enabled": True},
+                "psycopg2": {"enabled": False},
+            },
+            resource=Resource.create({"service.name": "ask-my-human"}),
+        )
     return AzureMonitorTelemetry()
