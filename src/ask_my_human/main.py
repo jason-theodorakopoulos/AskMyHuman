@@ -35,6 +35,8 @@ from ask_my_human.telephony.events import parse_callback_event
 
 PRINCIPAL_HEADER = "x-ms-client-principal"
 
+_app: FastAPI | None = None
+
 
 class PoolLifecycle(Protocol):
     """Pool surface the composition root opens and closes."""
@@ -81,7 +83,7 @@ class ApplicationComponents:
     use_case: AskHumanUseCase
     maintenance: RequestMaintenance
     validate_callback_token: Callable[[str], Awaitable[None]]
-    # Listed in shutdown order; the pool always closes after these clients.
+    # Client cleanups in shutdown order; the pool closes before them.
     closers: tuple[Callable[[], Awaitable[None]], ...] = field(default_factory=tuple)
 
 
@@ -125,7 +127,8 @@ def build_components(settings: Settings) -> ApplicationComponents:
         work_cutoff_seconds=settings.work_cutoff_seconds,
         poll_interval_seconds=settings.poll_interval_milliseconds / 1000,
     )
-    # Maintenance intervals are fixed operational defaults and carry no setting.
+    # The expiry and purge cadences stay at the RequestMaintenance defaults of one second
+    # and one hour; only the retention window is operator-configurable.
     maintenance = RequestMaintenance(
         repository,
         clock,
@@ -176,9 +179,10 @@ def create_app(components: ApplicationComponents | None = None) -> FastAPI:
         shutdown = ShutdownSignal()
         maintenance_tasks: list[asyncio.Task[None]] = []
         async with AsyncExitStack() as stack:
+            # Register client cleanup before opening the pool so a failed open leaks nothing.
+            stack.push_async_callback(_close_all, resolved.closers)
             await resolved.pool.open()
             stack.push_async_callback(resolved.pool.close)
-            stack.push_async_callback(_close_all, resolved.closers)
             await stack.enter_async_context(mcp_server.session_manager.run())
 
             maintenance_tasks = [
@@ -228,7 +232,11 @@ async def _stop_tasks(shutdown: ShutdownSignal, tasks: Sequence[asyncio.Task[Non
 
 
 def __getattr__(name: str) -> Any:
-    # Build the deployed application lazily so importing this module needs no environment.
+    # Build the deployed application lazily and once, so importing needs no environment
+    # and repeated access never creates a second set of clients.
+    global _app
     if name == "app":
-        return create_app()
+        if _app is None:
+            _app = create_app()
+        return _app
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

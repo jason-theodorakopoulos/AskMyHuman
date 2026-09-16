@@ -34,13 +34,17 @@ class CountingRepository(FakeRequestRepository):
         super().__init__()
         self.expiry_runs = 0
         self.purge_runs = 0
+        self.expired = asyncio.Event()
+        self.purged = asyncio.Event()
 
     async def expire_stale(self, now: datetime) -> int:
         self.expiry_runs += 1
+        self.expired.set()
         return await super().expire_stale(now)
 
     async def purge_terminal(self, before: datetime) -> int:
         self.purge_runs += 1
+        self.purged.set()
         return await super().purge_terminal(before)
 
 
@@ -294,13 +298,8 @@ async def test_maintenance_loops_run_and_stop_with_the_lifespan(
 ) -> None:
     app = composition.app()
     async with app.router.lifespan_context(app):
-        for _ in range(20):
-            await asyncio.sleep(0)
-            if composition.repository.expiry_runs and composition.repository.purge_runs:
-                break
-
-    assert composition.repository.expiry_runs >= 1
-    assert composition.repository.purge_runs >= 1
+        await asyncio.wait_for(composition.repository.expired.wait(), timeout=5)
+        await asyncio.wait_for(composition.repository.purged.wait(), timeout=5)
 
     stopped = (composition.repository.expiry_runs, composition.repository.purge_runs)
     await asyncio.sleep(0.05)
