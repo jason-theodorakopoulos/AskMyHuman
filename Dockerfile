@@ -1,4 +1,3 @@
-# syntax=docker/dockerfile:1.7
 FROM python:3.12-slim-bookworm@sha256:782412e85d0f0984994c290652577d4018aff08145c85b262bb63dc0c7522254 AS builder
 
 COPY --from=ghcr.io/astral-sh/uv:0.12.0 /uv /bin/uv
@@ -10,16 +9,14 @@ ENV UV_COMPILE_BYTECODE=1 \
 WORKDIR /app
 
 # Resolve dependencies before copying source so layer caching survives code edits.
-RUN --mount=type=cache,target=/root/.cache/uv \
-    --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
-    --mount=type=bind,source=uv.lock,target=uv.lock \
-    uv sync --frozen --no-install-project --no-dev
+# Plain COPY and RUN keep the build portable to builders without BuildKit.
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen --no-install-project --no-dev
 
-COPY pyproject.toml uv.lock README.md ./
+COPY README.md ./
 COPY src ./src
 
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev
+RUN uv sync --frozen --no-dev
 
 
 FROM python:3.12-slim-bookworm@sha256:782412e85d0f0984994c290652577d4018aff08145c85b262bb63dc0c7522254 AS runtime

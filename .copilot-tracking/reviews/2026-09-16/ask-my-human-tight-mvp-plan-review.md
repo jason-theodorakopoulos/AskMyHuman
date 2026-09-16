@@ -13,8 +13,8 @@
 
 ## Status
 
-Overall: Blocked for release acceptance; local implementation corrections are
-complete, with the post-documentation gate pending final recording below.
+Overall: Blocked for release acceptance; local implementation corrections and
+the required post-documentation gate are complete.
 Remaining confirmed local findings: 0 critical, 0 major, 0 minor.
 Follow-up groups: 4, all external or explicitly deferred release work.
 
@@ -40,7 +40,7 @@ The changes log's claim that Phase 2 is intentionally unimplemented conflicts wi
 | 1B | Corrected and compiled | [Infrastructure report](../rpi/2026-09-16/ask-my-human-tight-mvp-plan-002-validation.md); all seven modules compile; audience and effective table retention repaired. Exact ACS role and tenant prerequisites still require external evidence. |
 | 2 | Corrected and verified | [Composition report](../rpi/2026-09-16/ask-my-human-tight-mvp-plan-003-validation.md); mounted MCP, callback forwarding, lifespan and readiness tests pass; root and parameters compile. |
 | 3 | Corrected and verified locally | [Release report](../rpi/2026-09-16/ask-my-human-tight-mvp-plan-004-validation.md); image build/runtime, migrations, MCP listing, private logs, CI commands and stubbed deployment tests pass. Live harness is implemented, not live-accepted. |
-| 4 | Corrected; final rerun recorded below | [Documentation report](../rpi/2026-09-16/ask-my-human-tight-mvp-plan-005-validation.md); inventory and public behavior corrected. User approved DD-06 to remove the command-order conflict without waiving release gates. |
+| 4 | Locally verified after documentation | [Documentation report](../rpi/2026-09-16/ask-my-human-tight-mvp-plan-005-validation.md); inventory and public behavior corrected. User approved DD-06 to remove the command-order conflict without waiving release gates; the complete post-documentation gate passed. |
 | 5 and 6 | Release blocked | Deployment and live-test tooling reviewed and locally tested. What-if approval, publication, actual healthy revision and live acceptance are not executed evidence. |
 
 ## Quality Validation
@@ -96,7 +96,11 @@ The changes log's claim that Phase 2 is intentionally unimplemented conflicts wi
 | Bicep 0.47.16 build | Pass | Seven modules, root and dev parameters; synthetic CI values only |
 | Public environment example validation | Pass | Separate callback endpoint and audience accepted |
 | Source/test/document diagnostics | Pass for checked files | No relevant editor errors |
-| Post-documentation complete gate and `git diff --check` | Pending final recording | Required after the DD-06 and README update |
+| Post-documentation complete gate and `git diff --check` | Pass | Repeated lock/sync, schemas, format, lint, mypy, 429 tests/91.28% coverage, Compose, fresh image build, root Bicep, shell checks and whitespace after DD-06/README updates |
+
+Final local image ID:
+`sha256:8f226fc35aa1cae9ab45e7120089de3c636659b93c4d61f1d9e532fd96133849`.
+This is a local build artifact, not a published registry digest or deployed revision.
 
 Earlier failed checks were repaired, not omitted: the old migration-head assertion,
 one-second successful-verification test timeout, isolated smoke network routing,
