@@ -527,9 +527,88 @@ resource group `rg-askmyhuman`, region `swedencentral`. Step 5.3 remains open.
 
 * The exported snapshot has no authorized exact-byte review and does not claim
   global ingestion completeness. Bounded late-arrival risk remains.
-* `ACSCallSummary` had no rows at verification time. The `CallDiagnostics`
-  source change still requires gated deployment and ingestion verification.
+* `ACSCallSummary` had no rows at verification time. `CallDiagnostics` is live,
+  but its dedicated-table ingestion requires a subsequent applicable call.
 * Silence, rejection, free-form answer, busy, decline, mid-call disconnect,
   forced deadline, and initiating-client cancellation remain untested.
 * Request `4745f499-fdcd-443a-b2ff-c80abe4c5dc6` proves natural no-answer only.
   Its observer failed before cancellation, so it is not cancellation evidence.
+
+### Diagnostics Deployment
+
+* Source SHA: `088688825d4d5b6a1f4b819a986d1877ea5e7f3b`
+* Image digest:
+  `sha256:ef92ee186965634336358bd760bf45ac8a2976aad9bb16d89967341d999b40bb`
+* Revision: `askmyhuman--088688825d4d-ef92ee186965`
+* State: active, healthy, `RunningAtMaxScale`, one replica, and 100 percent traffic
+* Authentication: deployment verifier passed authenticated and anonymous-boundary checks
+* Diagnostic setting: `askmyhuman-call-evidence` routes the three enabled call
+  categories to workspace `60b8ef6d-ef0c-4615-83fd-ac836250baac`
+
+## Phase 6 Final Validation: 2026-09-17
+
+### Complete Repository Gate
+
+* Lock validation, frozen synchronization, schema drift, Ruff format and lint,
+  strict mypy, Compose configuration, shell syntax, Docker build and runtime
+  smoke, and all Bicep builds passed.
+* The non-live suite passed with 521 tests and 92.09 percent branch-inclusive
+  coverage. Twenty live tests were deselected and are not counted as acceptance.
+* The image smoke verified migrations, health, authentication rejection, MCP
+  initialization, an empty request table, and log privacy without placing a call.
+* The final source revision remains active and healthy with one replica, the
+  expected immutable digest, and 100 percent traffic.
+
+### Release Status
+
+The release remains blocked on Step 6.2. The reviewed live matrix does not yet
+establish rejection, free-form answer, silence, busy, decline, disconnect,
+forced deadline, HTTP cancellation, or MCP deadline behavior. No local code
+defect was found during final validation.
+
+### Live Cancellation Finding
+
+Two controlled requests tested initiating-client cancellation against the live
+Container App. Cancelling an active `httpx` request on a shared client produced
+request `dea0f688-14e0-4679-a9b6-95a592b8902e`, which terminated as a sanitized
+`dependency_failure` after 38 seconds. Repeating the test with a dedicated
+`Connection: close` transport produced request
+`f18f3f39-a9ff-45b5-be42-824fee83b6d8`, which terminated naturally as
+`expired/no_answer`. In neither case did the application observe a disconnect
+and persist `cancelled` within the required 15 seconds.
+
+The dedicated-client harness experiment was reverted after the live check
+disproved it. Local ASGI tests still validate direct disconnect signaling, but
+the deployed ingress path does not provide equivalent evidence. Release requires
+an explicit HTTP cancellation protocol or a formally approved HTTP limitation;
+changing the public contract was not attempted.
+
+### Additional Live Passes
+
+* MCP Streamable HTTP cancellation passed on request
+  `730b7272-1948-4572-a5ff-e3af5694f8e9`. The database persisted
+  `expired/cancelled` 0.737 seconds after creation, and MCP replay returned the
+  same request and terminal result without an execution error.
+* The production `RequestMaintenance.purge_once()` path removed one controlled
+  25-hour terminal row, retained the current terminal row, and cleaned up the
+  probe data.
+* Fourteen content-suppressed telemetry searches covered actual prompts,
+  idempotency keys, phone, database credentials, ACS key, agent and deployment
+  secrets, and authorization material. All returned zero matches.
+* A strict latest-revision snapshot for the two HTTP cancellation attempts was
+  exported with SHA-256
+  `29cbdee76d1a33ae54d79946b9781e9bbbf9f3a6e236c9d78df1891d06ded94d`.
+  It contains two provider attempts, two app correlations, six callback
+  deliveries, and zero pending joins. It remains unreviewed.
+* The MCP cancellation has three app observations and a correlated database
+  terminal result. Its provider `CreateCall` row had not arrived at the final
+  query, so it is not yet included in a reviewed independent snapshot.
+
+## Release Summary
+
+The current Azure deployment is live and healthy with independent ACS provider
+evidence, isolated live storage, strict evidence harvesting, three provider call
+diagnostic categories, application JWT authentication, and passing local release
+gates. Phase 5 and release acceptance remain partial until the reviewed live
+matrix and retention evidence are complete or explicit carrier limitations are
+approved.

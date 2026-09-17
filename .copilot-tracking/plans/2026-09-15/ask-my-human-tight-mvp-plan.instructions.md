@@ -236,6 +236,9 @@ approved values.
   * Details: .copilot-tracking/details/2026-09-15/ask-my-human-tight-mvp-details.md (Lines 1050-1085)
   * Blocked 2026-09-16: Phase 5A must complete first. The harness requires independent
     provider and telemetry evidence that no deployed component currently emits.
+  * Partial 2026-09-17: approval, natural no-answer, exact replay, MCP cancellation,
+    accelerated retention, and telemetry privacy passed. Plain HTTP disconnect did
+    not propagate through Container Apps, and the remaining human outcomes are open.
 
 ### [ ] Implementation Phase 5A: Live Call Evidence Enablement
 
@@ -248,11 +251,11 @@ Communication Services call logs to Log Analytics, and every auto-instrumentatio
 option is disabled, so no dependency rows record outbound calls. This phase
 builds the missing evidence sources and authorizes no paid call.
 
-* [ ] Step 5A.1: Route Communication Services call automation and summary logs to the Log Analytics workspace.
+* [x] Step 5A.1: Route Communication Services call automation and summary logs to the Log Analytics workspace.
   * Details: .copilot-tracking/details/2026-09-15/ask-my-human-tight-mvp-details.md (Lines 1158-1190)
-  * Partial 2026-09-17: `CallAutomationOperational` and `CallSummary` are deployed;
-    provider `CreateCall` rows ingest successfully. `CallDiagnostics` is implemented
-    and locally validated but still requires gated deployment and ingestion verification.
+  * Completed 2026-09-17: `CallAutomationOperational`, `CallSummary`, and
+    `CallDiagnostics` are enabled on the live ACS resource and routed to the intended
+    workspace. Provider `CreateCall` rows ingest and reconcile successfully.
 * [x] Step 5A.2: Build a read-only provider evidence harvester that emits harness-valid attempt, delivery, and pending-join exports.
   * Details: .copilot-tracking/details/2026-09-15/ask-my-human-tight-mvp-details.md (Lines 1191-1222)
 * [ ] Step 5A.3: Provision the isolated live database and emit the telemetry export watermark.
@@ -268,12 +271,17 @@ builds the missing evidence sources and authorizes no paid call.
 
 <!-- parallelizable: false -->
 
-* [ ] Step 6.1: Rerun schema, format, lint, type, non-live test, coverage, Compose, image, and Bicep gates against the final repository.
+* [x] Step 6.1: Rerun schema, format, lint, type, non-live test, coverage, Compose, image, and Bicep gates against the final repository.
   * Details: .copilot-tracking/details/2026-09-15/ask-my-human-tight-mvp-details.md (Lines 1090-1100)
 * [ ] Step 6.2: Verify live evidence for outcomes, timeout, cancellation, idempotency, terminal state, telemetry redaction, and accelerated retention.
   * Details: .copilot-tracking/details/2026-09-15/ask-my-human-tight-mvp-details.md (Lines 1101-1111)
-* [ ] Step 6.3: Fix isolated failures and rerun gates, or record release blockers that require new architecture or scope decisions.
+  * Partial 2026-09-17: MCP cancellation persisted within 0.737 seconds, replay was
+    stable, accelerated retention passed, and 14 sensitive-value telemetry searches
+    returned zero matches. Final-revision provider review and remaining outcomes are open.
+* [x] Step 6.3: Fix isolated failures and rerun gates, or record release blockers that require new architecture or scope decisions.
   * Details: .copilot-tracking/details/2026-09-15/ask-my-human-tight-mvp-details.md (Lines 1112-1122)
+  * Completed 2026-09-17: no isolated local defect remains. The release is blocked
+    on the incomplete reviewed live matrix recorded in the changes and planning logs.
 
 ## Merge Controls
 

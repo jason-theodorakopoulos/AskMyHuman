@@ -283,6 +283,8 @@ and DD-02 remain intentional, research-backed decisions.
     `CallDiagnostics` support.
   * Rationale: The additional content-free provider category can improve evidence
     for silence, ring-out, and disconnect scenarios without application SDK tracing.
+  * Deployment: Revision `askmyhuman--088688825d4d-ef92ee186965` is active,
+    healthy, authentication-verified, and running the approved immutable digest.
 
 ### Open Release Evidence
 
@@ -290,3 +292,46 @@ and DD-02 remain intentional, research-backed decisions.
   deadline, and cancellation arrangements or written release limitations.
 * The successful approval confirms outbound routing. The natural ring-out confirms
   no-answer only; it does not confirm initiating-client cancellation.
+
+## Phase 6 Release Blockers: 2026-09-17
+
+### Validation Status
+
+The final local gate passed with 521 non-live tests and 92.09 percent
+branch-inclusive coverage. Schema drift, formatting, linting, strict typing,
+Compose, Docker build and runtime smoke, shell syntax, Bicep compilation, Azure
+revision state, diagnostic routing, and telemetry retention checks all passed.
+
+### Unaddressed Release Items
+
+* DR-16: The available evidence snapshot has no authorized exact-byte review.
+  * Impact: high; the snapshot cannot satisfy the live harness approval gate.
+* DR-17: The reviewed live matrix lacks rejection, free-form answer, silence,
+  busy, decline, disconnect, forced deadline, HTTP cancellation, and MCP
+  deadline evidence.
+  * Impact: high; Step 6.2 and release acceptance remain blocked.
+* DR-18: The available snapshot is bound to the previous application revision
+  and contains no pending-join observation.
+  * Impact: medium; final-revision replay and join evidence must be harvested and
+    reviewed without inferring them from database rows.
+* DR-19: Container Apps did not propagate initiating HTTP client disconnects to
+  the application's `Request.is_disconnected()` watcher within the required bound.
+  * Evidence: A shared-client cancellation terminated as `dependency_failure`
+    after 38 seconds. A dedicated `Connection: close` transport terminated as
+    natural `no_answer`, not `cancelled`.
+  * Impact: high; the live cancellation gate fails despite passing direct ASGI tests.
+  * Required decision: add an explicit authenticated HTTP cancellation operation
+    or approve the HTTP disconnect limitation and revise the release contract.
+
+### Additional Verified Evidence
+
+* MCP cancellation passed through the deployed Streamable HTTP endpoint. Request
+  `730b7272-1948-4572-a5ff-e3af5694f8e9` persisted `expired/cancelled` in
+  0.737 seconds, and exact MCP replay returned the same terminal result.
+* Accelerated retention passed through the production purge operation: a
+  controlled 25-hour terminal row was removed while a current row was retained.
+* The live telemetry privacy audit ran 14 searches over actual sensitive values
+  and returned zero matches.
+* Latest-revision application evidence contains the MCP call correlation and
+  accepted callbacks. Independent provider ingestion was still pending at the
+  final query, so authorized review of a refreshed snapshot remains open.
