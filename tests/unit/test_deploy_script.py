@@ -390,6 +390,13 @@ def test_digest_is_deployed_and_health_requires_bearer(deployment: Deployment) -
     assert any(call["args"][:3] == ["deployment", "group", "create"] for call in calls)
     requests = deployment.calls("curl")
     assert sum("--config" in call["args"] for call in requests) == 2
+    agent_requests = [
+        call
+        for call in requests
+        if "/v1/requests" in str(call["args"]) or "/mcp" in str(call["args"])
+    ]
+    assert len(agent_requests) == 2
+    assert all(call["args"][call["args"].index("-X") + 1] == "POST" for call in agent_requests)
     assert all(
         "--connect-timeout" in call["args"] and "--max-time" in call["args"] for call in requests
     )

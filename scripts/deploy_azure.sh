@@ -223,7 +223,11 @@ verify_authentication() {
   local path status
   require_variables HEALTH_BEARER_TOKEN
   [[ "$HEALTH_BEARER_TOKEN" =~ ^[a-zA-Z0-9._~-]+$ ]] || fail 'invalid health bearer token format'
-  for path in /v1/requests /mcp /health/live /health/ready; do
+  for path in /v1/requests /mcp; do
+    status="$(http_status -X POST "$SERVICE_URL$path" -H 'content-type: application/json' -d '{}')"
+    [[ "$status" == 401 || "$status" == 403 ]] || fail 'protected endpoint accepted an anonymous request'
+  done
+  for path in /health/live /health/ready; do
     status="$(http_status "$SERVICE_URL$path")"
     [[ "$status" == 401 || "$status" == 403 ]] || fail 'protected endpoint accepted an anonymous request'
   done
