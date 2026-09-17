@@ -29,7 +29,7 @@ from ask_my_human.observability import configure_observability, instrument_app
 from ask_my_human.persistence.pool import PostgresPool
 from ask_my_human.persistence.repository import PostgresRequestRepository
 from ask_my_human.security.acs_callback import AcsCallbackTokenValidator
-from ask_my_human.security.agent import parse_container_apps_principal
+from ask_my_human.security.agent import AgentBearerTokenValidator, parse_container_apps_principal
 from ask_my_human.telephony.acs_client import AcsCallAutomationGateway
 from ask_my_human.telephony.events import parse_callback_event
 
@@ -166,15 +166,23 @@ def create_app(components: ApplicationComponents | None = None) -> FastAPI:
     resolved = components if components is not None else build_components(load_settings())
     settings = resolved.settings
     maintenance_tasks: list[asyncio.Task[None]] = []
+    bearer_validator = AgentBearerTokenValidator(
+        settings.entra_tenant_id,
+        settings.entra_client_id,
+        settings.authorized_agent_app_ids,
+    )
 
     def maintenance_ready() -> bool:
         return len(maintenance_tasks) == 2 and all(not task.done() for task in maintenance_tasks)
 
     async def authenticate(request: Request) -> Principal:
-        return parse_container_apps_principal(
-            request.headers.get(PRINCIPAL_HEADER),
-            settings.authorized_agent_app_ids,
-        )
+        encoded_principal = request.headers.get(PRINCIPAL_HEADER)
+        if encoded_principal is not None:
+            return parse_container_apps_principal(
+                encoded_principal,
+                settings.authorized_agent_app_ids,
+            )
+        return await bearer_validator.validate(request.headers.get("authorization"))
 
     mcp_server = create_mcp_server(resolved.use_case, authenticate)
     mcp_app = mcp_server.streamable_http_app(
