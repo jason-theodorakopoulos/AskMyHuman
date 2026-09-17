@@ -294,13 +294,16 @@ builds the missing evidence sources and authorizes no paid call.
 * [x] Step 7.2: Make ACS create-call and recognition operations use the persisted
   per-request destination, then remove `MY_MOBILE_NUMBER` from runtime and deployment settings.
   * Details: .copilot-tracking/details/2026-09-15/ask-my-human-tight-mvp-details.md (Phase 7)
-* [ ] Step 7.3: Regenerate schemas, update tests and documentation, run the full gate,
+* [x] Step 7.3: Regenerate schemas, update tests and documentation, run the full gate,
   deploy an immutable revision, and verify one live MCP input call.
   * Details: .copilot-tracking/details/2026-09-15/ask-my-human-tight-mvp-details.md (Phase 7)
   * Partial 2026-09-17: schemas and documentation are updated; focused contract,
     MCP, ACS, migration, and persistence validation passed with 60 tests.
   * Partial 2026-09-17: the full local gate passed with 538 non-live tests and
     92.03% coverage; immutable deployment and live MCP verification remain.
+  * Completed 2026-09-17: commit `15c3560` deployed as immutable revision
+    `askmyhuman--15c356092028-7cc75b083121`; authentication and health verification
+    passed, and a live caller-supplied MCP input request returned an answered result.
 
 ## Merge Controls
 

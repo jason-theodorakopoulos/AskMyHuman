@@ -197,6 +197,13 @@ and DD-02 remain intentional, research-backed decisions.
   * Plan specifies: A strictly `Running` revision.
   * Implementation differs: Both `Running` and `RunningAtMaxScale` are accepted.
   * Rationale: A single fixed replica always reports `RunningAtMaxScale`.
+* DD-12: Phase 7 release verification required a refreshed agent access token.
+  * Plan specifies: Deployment performs authenticated health verification.
+  * Implementation differs: Azure deployment succeeded, but the first verification
+    used an expired short-lived token and failed closed before release acceptance.
+  * Rationale: The existing authorized agent credential was used to obtain a fresh
+    token, then verification was rerun against the unchanged reviewed image,
+    revision, parameters, and what-if fingerprints.
 
 ### Deployment Evidence
 

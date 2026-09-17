@@ -649,3 +649,29 @@ deployment change is claimed complete at this point.
   drift, Ruff formatting and lint, mypy over 58 source files, 538 non-live tests,
   92.03% coverage, Compose configuration, production image build, Bicep build,
   shell syntax, and whitespace validation.
+
+## Phase 7 Deployment And Live Verification: 2026-09-17
+
+* Source commit `15c356092028b92467180fd1b714be2b7e784880` was published as
+  `askmyhumanacr.azurecr.io/ask-my-human@sha256:7cc75b083121f0d1a90c03499eaf22d8fda5a23a90de4800d41b1d6dbc4df271`.
+* Revision `askmyhuman--15c356092028-7cc75b083121` is active, healthy,
+  `RunningAtMaxScale`, and receives 100 percent of traffic with one replica.
+* Anonymous rejection and authenticated liveness/readiness verification passed.
+  The initial post-deployment probe failed closed because its short-lived agent
+  token had expired; verification passed after refreshing that token against the
+  unchanged reviewed release binding.
+* The first caller-supplied live MCP input request reached `expired/disconnected`.
+  One bounded retry with a fresh idempotency key reached `responded/answered` and
+  returned the spoken answer, "So I live in England, London."
+* The live destination was supplied only at invocation time and is not recorded
+  in repository tracking artifacts.
+
+## Phase 7 Release Summary
+
+Phase 7 affects 37 committed files: one migration was added and 36 contract,
+persistence, telephony, deployment, schema, documentation, tracking, and test
+files were modified. The fixed destination setting is removed from runtime and
+deployment configuration. The complete local gate, immutable Azure deployment,
+authenticated revision verification, and live caller-supplied MCP input test all
+passed. Earlier Phase 5A and Phase 6 reviewed-matrix limitations remain separate
+follow-on release work.
