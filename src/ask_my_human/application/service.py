@@ -150,6 +150,14 @@ class AskHumanService:
             await self._sync_pending()
             return self._terminal_value(stored, started, replay=True)
 
+        if admission == "joined_pending":
+            self._telemetry.record(
+                operation=TelemetryOperation.JOIN_PENDING,
+                request_id=stored.request_id,
+                kind=stored.request.kind,
+                replay=True,
+            )
+
         creator = admission == "created"
         if creator:
             self._active[stored.request_id] = (
@@ -406,6 +414,11 @@ class AskHumanService:
             ):
                 pass
             self._call_ids[stored.request_id] = call_id
+            self._telemetry.record(
+                operation=TelemetryOperation.CALL_CREATED,
+                request_id=stored.request_id,
+                call_id=call_id,
+            )
             attached = await self._dependency(
                 TelemetryOperation.REPOSITORY,
                 self._repository.attach_call_id(stored.request_id, call_id),

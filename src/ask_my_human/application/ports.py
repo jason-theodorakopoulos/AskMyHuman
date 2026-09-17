@@ -108,6 +108,9 @@ class Clock(Protocol):
 
 class TelemetryOperation(StrEnum):
     ASK = "ask"
+    JOIN_PENDING = "join_pending"
+    CALL_CREATED = "call_created"
+    CALLBACK_ACCEPTED = "callback_accepted"
     CALLBACK = "callback"
     REPOSITORY = "repository"
     CREATE_CALL = "create_call"
@@ -147,4 +150,8 @@ class Telemetry(Protocol):
         acs_code: int | None = None,
         elapsed_ms: int | None = None,
         replay: bool | None = None,
+        call_id: str | None = None,
+        event_id: str | None = None,
+        delivery_id: UUID | None = None,
+        received_at: datetime | None = None,
     ) -> None: ...

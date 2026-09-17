@@ -37,7 +37,9 @@ require_variables() {
 
 azure() {
   local limit="${AZURE_COMMAND_TIMEOUT_SECONDS:-120}"
-  [[ "$limit" =~ ^[1-9][0-9]{0,3}$ ]] && ((limit <= 3600)) || fail 'invalid Azure command timeout'
+  if [[ ! "$limit" =~ ^[1-9][0-9]{0,3}$ ]] || ((limit > 3600)); then
+    fail 'invalid Azure command timeout'
+  fi
   if [[ -n "${VERIFY_DEADLINE:-}" ]]; then
     limit=$((VERIFY_DEADLINE - SECONDS))
     ((limit > 0)) || fail 'revision verification deadline exhausted'

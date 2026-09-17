@@ -297,6 +297,10 @@ class FakeTelemetry:
         acs_code: int | None = None,
         elapsed_ms: int | None = None,
         replay: bool | None = None,
+        call_id: str | None = None,
+        event_id: str | None = None,
+        delivery_id: UUID | None = None,
+        received_at: datetime | None = None,
     ) -> None:
         self.records.append(
             {
@@ -308,5 +312,9 @@ class FakeTelemetry:
                 "acs_code": acs_code,
                 "elapsed_ms": elapsed_ms,
                 "replay": replay,
+                "call_id": call_id,
+                "event_id": event_id,
+                "delivery_id": delivery_id,
+                "received_at": received_at,
             }
         )

@@ -21,7 +21,7 @@ from uuid import UUID, uuid4
 import httpx
 import httpx2
 import pytest
-from azure.identity import ClientSecretCredential
+from azure.identity import ClientSecretCredential as ClientSecretCredential
 from azure.identity.aio import ClientSecretCredential as AsyncClientSecretCredential
 from azure.monitor.query import LogsQueryClient as SyncLogsQueryClient
 from azure.monitor.query import LogsQueryStatus
@@ -33,6 +33,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from ask_my_human.application.maintenance import RequestMaintenance
 from ask_my_human.contracts import AskHumanResult, Outcome, RequestStatus
 from ask_my_human.domain.models import HumanRequest, RequestState
+from ask_my_human.live_evidence import EvidenceSnapshot, read_reviewed_snapshot
 from ask_my_human.persistence.pool import PostgresPool
 from ask_my_human.persistence.repository import PostgresRequestRepository
 
@@ -66,9 +67,12 @@ class _Approval(_EvidenceModel):
     database_isolated: Literal[True]
     decisions: dict[str, str]
     scenarios: dict[str, str]
-    provider_evidence_file: str = Field(min_length=1)
+    evidence_file: str = Field(min_length=1)
+    evidence_review_file: str = Field(min_length=1)
+    evidence_reviewer: str = Field(min_length=1)
+    acs_resource_id: str = Field(min_length=1)
+    application_insights_resource_id: str = Field(min_length=1)
     telemetry_workspace: str = Field(min_length=1)
-    telemetry_evidence_file: str = Field(min_length=1)
     telemetry_settle_seconds: int = Field(ge=60, le=600)
     mcp_timeout_seconds: int = Field(ge=225, le=240)
 
@@ -96,89 +100,52 @@ class _Deployment(_EvidenceModel):
         return value
 
 
-class _Attempt(_EvidenceModel):
-    request_id: UUID
-    attempt_id: str = Field(min_length=1)
-    call_id: str = Field(min_length=1)
-
-
-class _Delivery(_EvidenceModel):
-    request_id: UUID
-    call_id: str
-    event_id: str
-    delivery_id: str
-    received_at: datetime
-    accepted: Literal[True]
-
-
-class _PendingJoin(_EvidenceModel):
-    request_id: UUID
-    event_id: str = Field(min_length=1)
-    observed_at: datetime
-
-
-class _ProviderEvidence(_EvidenceModel):
-    source: Literal["acs-provider", "acs-http-dependency"]
-    attempt_source: Literal["acs-provider"] = "acs-provider"
-    delivery_source: Literal["content-free-app-telemetry"] = "content-free-app-telemetry"
-    pending_join_source: Literal["content-free-app-telemetry"] = "content-free-app-telemetry"
-    record: str = Field(min_length=1)
-    revision: str
-    window_start: datetime
-    complete_through: datetime
-    attempts: list[_Attempt]
-    deliveries: list[_Delivery]
-    pending_joins: list[_PendingJoin] = Field(default_factory=list)
-
-
-class _TelemetryEvidence(_EvidenceModel):
-    source: Literal["log-analytics-export"]
-    record: str = Field(min_length=1)
-    revision: str
-    workspace: str
-    complete_through: datetime
-
-
-def _telemetry_watermark(approval: _Approval) -> datetime:
+def _read_evidence(approval: _Approval) -> EvidenceSnapshot:
     try:
-        evidence = _TelemetryEvidence.model_validate_json(
-            Path(approval.telemetry_evidence_file).read_text()
+        return read_reviewed_snapshot(
+            Path(approval.evidence_file).read_bytes(),
+            Path(approval.evidence_review_file).read_bytes(),
+            revision=approval.revision,
+            workspace=UUID(approval.telemetry_workspace),
+            acs_resource_id=approval.acs_resource_id,
+            application_insights_resource_id=approval.application_insights_resource_id,
+            reviewer=approval.evidence_reviewer,
+            now=datetime.now(tz=UTC),
         )
-        if (
-            evidence.revision != approval.revision
-            or evidence.workspace != approval.telemetry_workspace
-        ):
-            raise ValueError
-        if evidence.complete_through > datetime.now(tz=UTC):
-            raise ValueError
-        return evidence.complete_through
     except (OSError, ValueError, TypeError):
         raise AssertionError(
-            "Telemetry export interval evidence is unavailable or invalid."
+            "Reviewed provider/application evidence is unavailable or invalid."
         ) from None
 
 
-def _read_provider(approval: _Approval) -> _ProviderEvidence:
+def _read_interval_evidence(
+    approval: _Approval, *, started: datetime, finished: datetime
+) -> EvidenceSnapshot | None:
     try:
-        evidence = _ProviderEvidence.model_validate_json(
-            Path(approval.provider_evidence_file).read_text()
-        )
-        if evidence.revision != approval.revision or not (
-            evidence.window_start <= evidence.complete_through <= datetime.now(tz=UTC)
-        ):
-            raise ValueError
-        return evidence
-    except (OSError, ValueError, TypeError):
-        raise AssertionError("Authorized provider evidence is unavailable or invalid.") from None
+        evidence = _read_evidence(approval)
+    except AssertionError:
+        return None
+    if evidence.window_start > started:
+        raise AssertionError("Reviewed evidence misses the start of the call interval.")
+    return evidence if evidence.window_end >= finished else None
 
 
-def _assert_one_attempt(evidence: _ProviderEvidence, stored: HumanRequest) -> None:
+def _assert_one_attempt(evidence: EvidenceSnapshot, stored: HumanRequest) -> None:
     if stored.result is None or stored.state not in {RequestState.RESPONDED, RequestState.EXPIRED}:
         raise AssertionError("The accepted key has no public terminal result.")
-    attempts = [item for item in evidence.attempts if item.request_id == stored.request_id]
-    if len({item.attempt_id for item in attempts}) != 1:
-        raise AssertionError("Provider evidence must prove exactly one actual ACS create attempt.")
-    if any(item.call_id != stored.call_id for item in attempts):
+    call_ids = {
+        item.call_id_sha256
+        for item in evidence.application.correlations
+        if item.request_id == stored.request_id
+    }
+    attempts = [item for item in evidence.provider.attempts if item.call_id_sha256 in call_ids]
+    if len(attempts) != 1:
+        raise AssertionError("Provider evidence must contain exactly one ACS CreateCall result.")
+    if (
+        stored.call_id is None
+        or attempts[0].call_id_sha256 != sha256(stored.call_id.encode()).hexdigest()
+        or not 200 <= attempts[0].result_code < 300
+    ):
         raise AssertionError("Provider evidence does not match the stored call correlation.")
 
 
@@ -195,18 +162,16 @@ class _CallAudit:
             self.keys.add(UUID(body["idempotencyKey"]))
 
 
-async def _await_provider(
+async def _await_evidence(
     approval: _Approval,
     *,
     started: datetime,
     finished: datetime,
-) -> _ProviderEvidence:
+) -> EvidenceSnapshot:
     async with asyncio.timeout(180):
         while True:
-            evidence = _read_provider(approval)
-            if evidence.window_start > started:
-                raise AssertionError("Provider evidence misses the start of the call interval.")
-            if evidence.complete_through >= finished:
+            evidence = _read_interval_evidence(approval, started=started, finished=finished)
+            if evidence is not None:
                 return evidence
             await asyncio.sleep(5)
 
@@ -221,7 +186,7 @@ async def call_audit(
     yield audit
     if not audit.keys:
         return
-    evidence = await _await_provider(
+    evidence = await _await_evidence(
         live_preflight,
         started=audit.started,
         finished=datetime.now(tz=UTC),
@@ -307,8 +272,7 @@ def live_preflight(
     quiet_live_sdk: None,
 ) -> _Approval:
     try:
-        _read_provider(live_approval)
-        _telemetry_watermark(live_approval)
+        _read_evidence(live_approval)
         with (
             ClientSecretCredential(
                 tenant_id=_required_env("LIVE_AGENT_TENANT_ID"),
@@ -588,6 +552,7 @@ async def test_live_telemetry_records_identifiers_but_no_prompt_content(
     access_token: str,
 ) -> None:
     """Speak the approved answer sentinel; query every category across the export interval."""
+    started = datetime.now(tz=UTC)
     key = uuid4()
     sentinels = {
         "prompt": f"prompt-{uuid4().hex}",
@@ -633,7 +598,7 @@ async def test_live_telemetry_records_identifiers_but_no_prompt_content(
 
         try:
             async with asyncio.timeout(live_preflight.telemetry_settle_seconds + 180):
-                started = monotonic()
+                settle_started = monotonic()
                 while True:
                     for category, sentinel in sentinels.items():
                         if await row_count(sentinel):
@@ -641,14 +606,19 @@ async def test_live_telemetry_records_identifiers_but_no_prompt_content(
                                 f"Sensitive {category} appeared in telemetry.", pytrace=False
                             )
                     correlated = await row_count(str(stored.request_id)) > 0
-                    settled = monotonic() - started >= live_preflight.telemetry_settle_seconds
-                    exported = _telemetry_watermark(live_preflight) >= finished
-                    if correlated and settled and exported:
+                    settled = (
+                        monotonic() - settle_started >= live_preflight.telemetry_settle_seconds
+                    )
+                    exported = _read_interval_evidence(
+                        live_preflight, started=started, finished=finished
+                    )
+                    if correlated and settled and exported is not None:
                         break
                     await asyncio.sleep(5)
         except TimeoutError:
             pytest.fail(
-                "Telemetry ingestion evidence did not complete within the bound.", pytrace=False
+                "Telemetry observations and export review did not arrive within the bound.",
+                pytrace=False,
             )
 
 
@@ -949,7 +919,7 @@ async def test_live_concurrent_replay(
             repository, response.json(), outcome=Outcome.APPROVED
         )
         finished = datetime.now(tz=UTC)
-        evidence = await _await_provider(live_preflight, started=started, finished=finished)
+        evidence = await _await_evidence(live_preflight, started=started, finished=finished)
         _assert_pending_join(evidence, stored.request_id, started=started, finished=finished)
     finally:
         first.cancel()
@@ -958,7 +928,7 @@ async def test_live_concurrent_replay(
 
 
 def _assert_pending_join(
-    evidence: _ProviderEvidence,
+    evidence: EvidenceSnapshot,
     request_id: UUID,
     *,
     started: datetime,
@@ -966,23 +936,27 @@ def _assert_pending_join(
 ) -> None:
     if not any(
         item.request_id == request_id and started <= item.observed_at <= finished
-        for item in evidence.pending_joins
+        for item in evidence.application.pending_joins
     ):
         raise AssertionError("Concurrent replay lacks content-free pending-join evidence.")
 
 
 def _assert_duplicate_evidence(
-    evidence: _ProviderEvidence,
+    evidence: EvidenceSnapshot,
     stored: HumanRequest,
     terminal_at: datetime,
 ) -> None:
     deliveries = [
         item
-        for item in evidence.deliveries
-        if (item.request_id == stored.request_id and item.call_id == stored.call_id)
+        for item in evidence.application.deliveries
+        if (
+            item.request_id == stored.request_id
+            and stored.call_id is not None
+            and item.call_id_sha256 == sha256(stored.call_id.encode()).hexdigest()
+        )
     ]
-    for event_id in {item.event_id for item in deliveries}:
-        copies = [item for item in deliveries if item.event_id == event_id]
+    for event_id in {item.event_id_sha256 for item in deliveries}:
+        copies = [item for item in deliveries if item.event_id_sha256 == event_id]
         if len({item.delivery_id for item in copies}) >= 2 and any(
             item.received_at >= terminal_at for item in copies
         ):
@@ -1009,7 +983,7 @@ async def test_live_duplicate_callback_cannot_rewrite_terminal(
     terminal_at = datetime.now(tz=UTC)
     async with asyncio.timeout(180):
         while True:
-            evidence = await _await_provider(
+            evidence = await _await_evidence(
                 live_preflight,
                 started=started,
                 finished=terminal_at,

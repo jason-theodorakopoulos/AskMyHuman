@@ -3,15 +3,15 @@ targetScope = 'resourceGroup'
 @description('Name of the existing ACS resource.')
 param acsResourceName string
 
-@description('Resource ID of the Log Analytics workspace receiving ACS diagnostics.')
+@description('Resource ID of the Log Analytics workspace for provider call evidence.')
 param logAnalyticsWorkspaceId string
 
 resource acs 'Microsoft.Communication/communicationServices@2023-04-01' existing = {
   name: acsResourceName
 }
 
-resource acsDiagnostics 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
-  name: 'askmyhuman-call-automation'
+resource callEvidence 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
+  name: 'askmyhuman-call-evidence'
   scope: acs
   properties: {
     workspaceId: logAnalyticsWorkspaceId
@@ -22,7 +22,7 @@ resource acsDiagnostics 'Microsoft.Insights/diagnosticSettings@2021-05-01-previe
         enabled: true
       }
       {
-        category: 'CallAutomationMediaSummary'
+        category: 'CallSummary'
         enabled: true
       }
     ]
