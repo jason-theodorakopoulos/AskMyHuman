@@ -1,112 +1,61 @@
 ---
 title: AskMyHuman
-description: Synchronous human approval and spoken answers for authenticated agents through Azure Communication Services.
+description: Synchronous human approval and spoken answers for authenticated AI agents.
 ---
 
-## Overview
+## Human judgment, one call away
 
-Human-in-the-loop for autonomous agents. AskMyHuman lets an authenticated agent
-place one synchronous request, an approval or a free-form question, that is
-answered by a human over a single phone call, and returns a terminal result to
-the agent in the same request/response turn.
+AskMyHuman gives autonomous agents a direct way to ask for human input. An
+authenticated agent submits an approval request or a free-form question, and
+the service calls one configured person through Azure Communication Services
+(ACS). The answer returns in the same request.
 
-## Product Scope (Tight MVP)
+Use AskMyHuman when an agent needs a clear decision before continuing, such as
+approving a deployment, confirming an action, or answering a question that
+requires human context.
 
-1. An agent asks for either an `approval` or an `input` (free-form
-   answer) through an MCP tool or the HTTP API.
-2. Every request goes to the one human configured through the
-   `MY_MOBILE_NUMBER` setting. There is no support for multiple humans, roles,
-   or per-agent routing.
-3. The service places one outbound phone call through Azure
-   Communication Services (ACS).
-4. The call plays the request's prompt so the human has enough
-   context to decide or answer.
-5. Approvals are captured as approve/reject choices; input
-   requests capture one spoken answer transcribed to text.
-6. Requests move from `pending` to `responded` or `expired` and
-   never resume once terminal.
-7. Asynchronous resume is unsupported. Subject-scoped idempotent invocations
-  can join a pending wait or replay a stored terminal result without another
-  call or an extended deadline.
-8. Escalation is out of scope. No retries, no additional channels, no
-   multiple humans/roles, and no escalation paths.
+## How it works
 
-### Explicit Exclusions
-
-* Multiple humans, roles, or per-agent routing.
-* Retries, escalation, or additional notification channels (SMS, email, chat).
-* Asynchronous resume, background retrieval, or reopening a terminal request.
-* Multi-turn conversation, clarification loops, or free-form voice dialogue.
-* Horizontal scaling: the Container Apps deployment is fixed to exactly one
-  replica (minimum and maximum) for this MVP.
-* Private networking (VNet integration): Azure resources use public service
-  endpoints protected by TLS, managed identity, and application-level
-  authentication instead of a VNet.
-
-Follow-on ideas (multiple humans, escalation, retries, multi-turn voice,
-horizontal scaling, private networking) are tracked in
-[.copilot-tracking/plans/logs/2026-09-15/ask-my-human-tight-mvp-log.md](.copilot-tracking/plans/logs/2026-09-15/ask-my-human-tight-mvp-log.md) and are
-**not** implemented here.
-
-## Architecture
-
-* Azure Container Apps hosts the AskMyHuman API, MCP adapter, and
-  orchestration logic as a single FastAPI/Uvicorn ASGI application, fixed to
-  one replica.
-* Azure Database for PostgreSQL provides durable storage for request state,
-  idempotency, and terminal results, accessed with Psycopg 3 async pooling and
-  Alembic migrations.
-* Azure Communication Services (ACS) Call Automation places the one
-  outbound phone call per request and drives the call through callbacks.
-* ACS Play and Recognize with Azure AI Speech captures the human's
-  approve/reject choice or spoken free-form answer using one bounded
-  choice/speech-recognition action. **This replaces the Microsoft Foundry
-  Voice Live API named in earlier product notes.** Voice Live's bidirectional
-  media streaming is reserved for future multi-turn clarification work and is
-  not implemented in this MVP. See DD-01 in
-  [.copilot-tracking/plans/logs/2026-09-15/ask-my-human-tight-mvp-log.md](.copilot-tracking/plans/logs/2026-09-15/ask-my-human-tight-mvp-log.md).
-* Microsoft Entra ID authenticates calling agents; ACS callbacks are
-  separately authenticated by validating the ACS-issued callback JWT.
-* Azure Monitor / Application Insights collects content-free OpenTelemetry traces
-  and metrics; no prompts, answers, or phone numbers are recorded in
-  telemetry.
-
-### Request Flow
+1. An agent calls the `ask_human` MCP tool or sends `POST /v1/requests`.
+2. AskMyHuman places an outbound call to `MY_MOBILE_NUMBER`.
+3. ACS reads the prompt using Azure AI Speech.
+4. The human approves, rejects, or speaks an answer.
+5. ACS recognizes the response and sends it to AskMyHuman by callback.
+6. The agent receives the terminal result on the open request.
 
 ```text
-Agent -> POST /v1/requests (or MCP tool "ask_human")
-  -> AskMyHuman places one ACS call to MY_MOBILE_NUMBER
-  -> Human responds by phone (approve/reject or spoken answer)
-  -> ACS callback delivers the outcome
-  -> AskMyHuman returns a terminal result on the open request
+Agent -> AskMyHuman -> ACS phone call -> Human
+Agent <- AskMyHuman <- ACS callback  <- Human response
 ```
 
-The supported deployment policy uses a non-extendable 210-second deadline
-starting when the pending row is committed, with new media work stopped at
-205 seconds. These are configurable defaults, not an invariant enforced for
-every configuration. Preserve this policy beneath the 240-second Container
-Apps ingress timeout and configure clients for at least 225 seconds.
+## Product capabilities
 
-Deadline expiry produces `status: "expired"` and `outcome: "deadline_exceeded"`:
-an HTTP 200 terminal result and a successful MCP tool result, not an execution
-error. A cancelled or closed connection can prevent delivery; persistence of a
-terminal result does not guarantee that the initiating client receives it.
+* Approval requests with voice or keypad responses
+* Free-form questions with speech-to-text answers
+* MCP Streamable HTTP and REST interfaces
+* Microsoft Entra ID authentication and application-role authorization
+* Durable request state and idempotent replay with PostgreSQL
+* Content-free OpenTelemetry traces and metrics
+* A fixed 210-second request deadline by default
+
+The current release supports one configured human, one call per request, and
+one response. It does not support retries, escalation, multiple recipients,
+multi-turn conversations, asynchronous retrieval, or horizontal scaling.
 
 ## Interfaces
 
-### HTTP API
+### MCP
 
-* `POST /v1/requests`: submit an `AskHumanRequest` and receive an
-  `AskHumanResult` (or an `ExecutionError`) once the call reaches a terminal
-  state.
-* `POST /v1/callbacks/acs`: ACS Call Automation event callback endpoint,
-  authenticated with the ACS callback JWT.
-* `GET /health/live`: liveness probe.
-* `GET /health/ready`: readiness probe (checks the database pool).
-* `GET /.well-known/oauth-protected-resource`: OAuth protected-resource
-  metadata for MCP clients.
+Connect an MCP client to `/mcp` and invoke `ask_human` with the same fields as
+the HTTP request below. The calling application must have the
+`AskHuman.Invoke` application role, and its application ID must be listed in
+`AUTHORIZED_AGENT_APP_IDS`.
 
-Example JSON body for `POST /v1/requests`:
+Use a client timeout of at least 225 seconds.
+
+### HTTP
+
+Send an authenticated request to `POST /v1/requests`:
 
 ```json
 {
@@ -116,7 +65,7 @@ Example JSON body for `POST /v1/requests`:
 }
 ```
 
-Example terminal result:
+A completed approval returns:
 
 ```json
 {
@@ -126,116 +75,84 @@ Example terminal result:
 }
 ```
 
-`kind` is either `approval` or `input`. Terminal `outcome` values are
-`approved`, `rejected`, or `answered` (with an `answer` field) for a completed
-call, and `no_answer`, `busy`, `declined`, `disconnected`, `cancelled`, or
-`deadline_exceeded` when the call did not complete.
+Set `kind` to `approval` for an approve/reject choice or `input` for a spoken
+answer. Completed outcomes are `approved`, `rejected`, or `answered`. Calls
+that do not complete can return `no_answer`, `busy`, `declined`,
+`disconnected`, `cancelled`, or `deadline_exceeded`.
 
-Idempotency keys are scoped to the authenticated agent subject while the
-request record is retained:
+Other endpoints:
 
-* A matching key and normalized payload joins the existing pending wait or
-  replays the stored terminal result or technical error, without another call.
-* The same key with a different normalized payload returns HTTP 409
-  `idempotency_conflict`.
-* A distinct request while the single global pending slot is occupied returns
-  HTTP 429. A matching join or replay is not a new admission.
+* `POST /v1/callbacks/acs` receives authenticated ACS events
+* `GET /health/live` reports process health
+* `GET /health/ready` reports database and maintenance readiness
+* `GET /.well-known/oauth-protected-resource` publishes MCP OAuth metadata
 
-Joining does not reset the original deadline. Validation, authorization,
-conflict, admission, dependency, and internal failures use execution errors;
-human availability and deadline outcomes use terminal results. No asynchronous
-retrieval or resume endpoint is provided.
+Idempotency keys are scoped to the authenticated agent. Reusing a key with the
+same request joins an active wait or replays its result without placing another
+call. Reusing it with different content returns HTTP 409. Because this release
+allows one active request globally, another request returns HTTP 429 while the
+slot is occupied.
 
-### MCP
+## Local development
 
-The same capability is exposed over MCP Streamable HTTP, mounted at `/mcp`,
-with one `ask_human` tool that accepts the same request shape and returns the
-same terminal result shape as the HTTP API.
-
-The authorized calling application needs the `AskHuman.Invoke` application
-role and an entry in `AUTHORIZED_AGENT_APP_IDS`. Before release, verify the
-actual MCP client supports a timeout of at least 225 seconds and propagates
-cancellation. Progress events must not extend the service deadline. Initiating
-client cancellation targets `expired/cancelled`; cancelling a joined waiter
-must not cancel the creator's request. Record target-client evidence, not only
-a configured timeout value or local adapter tests.
-
-## Local Setup
-
-Requirements: Python 3.12, [uv](https://docs.astral.sh/uv/), Docker (for
-Postgres/testcontainers and image builds), and the Azure CLI with the Bicep
-extension (for infrastructure validation only).
+Requirements: Python 3.12, [uv](https://docs.astral.sh/uv/), and Docker.
 
 ```bash
 uv sync --frozen --all-groups
 cp .env.example .env
+docker compose --env-file /dev/null up --build
 ```
 
-For a host process, populate the ignored local environment file privately;
-`Settings` reads it relative to the working directory. Copying
-[.env.example](.env.example) is only a starting point, not a complete live
-configuration. Never commit populated values.
-
-[compose.yaml](compose.yaml) sets literal placeholder Azure values and
-throwaway database credentials. It does not bind the host environment file
-through `env_file`; editing that file does not configure the app container.
-Published ports are loopback-only. Compose is a startup and health smoke setup,
-not a fake-call mode or a working live Azure deployment. Do not submit phone
-requests with this configuration.
-
-The following Compose procedure is separate from the automated container test;
-a successful image build alone does not prove migrations and health:
+Check the running service:
 
 ```bash
-docker compose --env-file /dev/null up --build
 curl http://localhost:8000/health/live
 curl http://localhost:8000/health/ready
 ```
 
-Run the test suite (spins up a Postgres testcontainer for integration tests):
-
-```bash
-uv run pytest -m "not live" --cov=ask_my_human --cov-report=term-missing --cov-fail-under=90
-```
-
-The [tests/e2e/test_live_call.py](tests/e2e/test_live_call.py) module is marked `live` and is skipped by
-default; it requires a deployed service and real Azure/ACS credentials.
+The Compose configuration uses placeholder Azure values and cannot place a
+real call. For host-based development, populate the ignored `.env` file with
+your own settings. Never commit credentials or phone numbers.
 
 ## Configuration
 
-Service configuration is read into a typed `Settings` object. The telemetry
-bootstrap separately reads `APPLICATIONINSIGHTS_CONNECTION_STRING` from the
-process environment; do not assume the settings file loads that variable into
-the process environment.
+| Variable                                | Purpose                                                              |
+|-----------------------------------------|----------------------------------------------------------------------|
+| `DATABASE_URL`                          | PostgreSQL connection string                                         |
+| `ACS_ENDPOINT`                          | ACS resource endpoint                                                |
+| `ACS_SOURCE_PHONE_NUMBER`               | Outbound-enabled ACS number in E.164 format                           |
+| `MY_MOBILE_NUMBER`                      | Human recipient number in E.164 format                               |
+| `AZURE_AI_ENDPOINT`                     | Azure AI Speech endpoint for playback and recognition                |
+| `ACS_CALLBACK_URL`                      | Public HTTPS URL ending in `/v1/callbacks/acs`                        |
+| `ACS_CALLBACK_AUDIENCE`                 | Immutable ACS resource ID used to validate callback tokens           |
+| `ENTRA_TENANT_ID`                       | Microsoft Entra tenant ID                                            |
+| `ENTRA_CLIENT_ID`                       | Service application client ID                                        |
+| `AUTHORIZED_AGENT_APP_IDS`              | Comma-separated authorized application IDs                           |
+| `MCP_ALLOWED_HOSTS`                     | Comma-separated hosts allowed to reach MCP                            |
+| `APPLICATIONINSIGHTS_CONNECTION_STRING` | Optional Azure Monitor exporter connection                           |
 
-The callback settings below describe the required corrected contract. Review
-repairs are ongoing: confirm source, Compose, and deployment bindings all use
-the split before running them. A callback URL is not a JWT audience.
+Optional settings include `LOCALE`, `VOICE_NAME`, `DEADLINE_SECONDS`,
+`WORK_CUTOFF_SECONDS`, `POLL_INTERVAL_MILLISECONDS`, and `RETENTION_HOURS`.
 
-| Variable | Purpose |
-| --- | --- |
-| `DATABASE_URL` | PostgreSQL connection string. |
-| `ACS_ENDPOINT` | Azure Communication Services resource endpoint. |
-| `ACS_SOURCE_PHONE_NUMBER` | Outbound-enabled ACS phone number, E.164 format. |
-| `MY_MOBILE_NUMBER` | The one human's phone number, E.164 format. |
-| `AZURE_AI_ENDPOINT` | Azure AI Speech endpoint used for Play and Recognize. |
-| `ACS_CALLBACK_URL` | Public HTTPS callback URL including the full `/v1/callbacks/acs` endpoint. |
-| `ACS_CALLBACK_AUDIENCE` | Immutable ACS resource ID string used for JWT audience validation, not the callback URL. |
-| `ENTRA_TENANT_ID` | Microsoft Entra tenant ID used to validate agent tokens. |
-| `ENTRA_CLIENT_ID` | Microsoft Entra application (client) ID for this service. |
-| `AUTHORIZED_AGENT_APP_IDS` | Comma-separated list of Entra application IDs authorized to call the service. |
-| `MCP_ALLOWED_HOSTS` | Comma-separated list of hosts allowed to reach the MCP transport. |
-| `LOCALE`, `VOICE_NAME` | Optional overrides for the ACS call locale and voice. |
-| `DEADLINE_SECONDS`, `WORK_CUTOFF_SECONDS`, `POLL_INTERVAL_MILLISECONDS`, `RETENTION_HOURS` | Optional overrides for the call deadline, internal work cutoff, poll interval, and database retention window. |
-| `APPLICATIONINSIGHTS_CONNECTION_STRING` | Optional; when unset, Azure Monitor exporting is skipped so local/test environments start without an Application Insights resource. |
+## Deploy to Azure
 
-Keep secrets and tenant-specific values out of committed files and retained
-command output. [.env.example](.env.example) and [compose.yaml](compose.yaml)
-are placeholder templates, not deployment credentials.
+The Bicep templates deploy the Container App, PostgreSQL, Azure AI Services,
+managed identities, role assignments, and observability resources. You must
+provide:
 
-## Validation Commands
+* An existing ACS resource with a system-assigned identity
+* An outbound-enabled ACS phone number
+* Microsoft Entra app registrations and the `AskHuman.Invoke` role assignment
+* An Azure subscription, resource group, region, and container registry
+* A public callback URL and the ACS immutable resource ID audience
 
-The required local merge gate, to run from a clean checkout:
+Use [scripts/deploy_azure.sh](scripts/deploy_azure.sh) to review, publish,
+deploy, verify, or roll back a release. Start with its help and `what-if`
+commands. The script never treats deployment as approval to place paid calls.
+
+## Validate
+
+Run the local checks:
 
 ```bash
 uv lock --check
@@ -250,237 +167,24 @@ docker build --tag ask-my-human:mvp .
 az bicep build --file infra/main.bicep
 ```
 
-Rerun the complete gate after documentation edits (Step 4.3) and after final
-release corrections (Step 6.1). No repository Markdown command is configured;
-use editor diagnostics for changed Markdown and the whitespace fallback:
-
-```bash
-git diff --check -- README.md .copilot-tracking/changes/2026-09-15/ask-my-human-tight-mvp-changes.md
-```
-
-Record the reviewed revision, actual command results, and each blocker owner
-and next action in the review log. The commands above remain required for each
-release; see the dated review log for actual results. The non-live
-suite now builds and starts the application image against disposable PostgreSQL,
-checks migration-before-Uvicorn startup with an encoded password, exercises
-liveness/readiness and authentication rejection, and checks query-log redaction.
-It uses synthetic settings without mounting the workspace environment file.
-Run that bounded test again for the final state; it does not verify Azure ingress.
-
-Local validation is separate from the externally gated Azure and paid-call
-procedures below. Under user-approved decision DD-06 (2026-09-16), Phase 4
-command evidence covers local validation. Deployment and live procedures remain
-mandatory Phase 5 and 6 acceptance gates; documenting them does not count as
-executing them.
-
-## Azure Prerequisites And Deployment
-
-Deployment is gated on tenant-specific inputs that cannot be derived from this
-repository:
-
-* An existing ACS resource that already owns an outbound-enabled phone number
-  (number acquisition is out of scope).
-* A Microsoft Entra tenant with application registrations for both this
-  service and the authorized calling agent(s), including `AskHuman.Invoke`
-  application-role assignment and the configured authorized-client allowlist.
-* A target Azure subscription, region, resource group, and container
-  registry.
-* Approval of the default 24-hour database retention and 30-day content-free
-  telemetry retention, or an explicit configuration change.
-* Acceptance evidence from the chosen MCP client for at least a 225-second
-  timeout and cancellation propagation.
-* A public HTTPS callback endpoint and the distinct immutable ACS resource ID
-  audience, with consistent settings and deployment bindings.
-
-[scripts/deploy_azure.sh](scripts/deploy_azure.sh) provides deployment assistance,
-not completion of all release gates. Its default action is help. Use `what-if`
-for a sanitized review, obtain a bound external approval, then explicitly
-`publish`. Review the resulting digest with `what-if` and obtain a new approval
-before `deploy`. `verify` requires release approval and authenticated health
-checks. `rollback` requires a previously approved digest and new mutation
-approval; it never rebuilds. Successful script execution is not operator approval.
-
-Supply deployment inputs privately through environment variables, never as
-committed parameter literals. Reconcile the current helper's requirements with:
-`AZURE_RESOURCE_GROUP`, `AZURE_LOCATION`, `CONTAINER_REGISTRY_NAME`,
-`CONTAINER_REGISTRY_SERVER`, `CONTAINER_REGISTRY_RESOURCE_ID`,
-`POSTGRES_ADMIN_PASSWORD`, `MY_MOBILE_NUMBER`, `ACS_SOURCE_PHONE_NUMBER`,
-`ENTRA_TENANT_ID`, `ENTRA_CLIENT_ID`, `ENTRA_CLIENT_SECRET`,
-`AUTHORIZED_AGENT_APP_IDS`, `EXISTING_ACS_RESOURCE_ID`, `ACS_CALLBACK_URL`,
-`ACS_CALLBACK_AUDIENCE`, and `MCP_ALLOWED_HOSTS`. Verification may additionally
-need an explicit app, expected image digest/revision, and an authenticated
-health-check identity. Consult the reviewed helper rather than assuming
-verification needs only a resource-group name.
-
-### Operator Release Gates
-
-1. Resolve DR-01 through DR-05. Obtain explicit
-  approval for Azure mutations, retention, and separately for paid calls.
-2. Inspect the complete what-if change list for the intended one-app
-  architecture. A successful exit code is not evidence of a reviewed diff.
-  Retain only sanitized evidence, excluding secrets and phone numbers.
-3. Build the reviewed source and retain its full Git SHA tag for traceability.
-  Tags can be overwritten; record the registry digest and exact deployed
-  revision to establish immutable identity. Do not claim a SHA tag alone
-  makes an image immutable.
-4. Verify the intended revision uses the expected immutable image, is active,
-  and reports healthy/running probe state. Verify both liveness and database
-  readiness using authenticated external health requests where Entra applies;
-  do not relax authentication to make smoke checks succeed.
-5. Verify unauthenticated `/v1/requests` and `/mcp` requests and invalid-token
-  ACS callbacks are rejected. Do not place an authenticated phone request as
-  a health check. Deployment assistance must not automatically run paid calls.
-6. Record sanitized revision, digest, probe, authentication, and approval
-  evidence before separately authorizing the live matrix.
-
-### Failure And Rollback
-
-Stop before live testing if build, deployment, readiness, or authentication
-checks fail. Capture sanitized deployment operations and Container Apps system
-logs, with a blocker owner and next action. For an update, use the approved
-rollback procedure to redeploy the recorded last-known-good immutable image
-and configuration, then repeat revision and health/authentication checks.
-Confirm database migration compatibility before rollback; changing an image
-does not undo a migration.
-
-For a first deployment with no known-good target, mark release blocked. Retain
-failed resources only for bounded diagnosis or remove them through the approved
-resource-group process. Do not invent a rollback target or silently proceed to
-billable calls.
-
-### Live Call Validation
-
-Live tests place real phone calls and cost money. They stay out of the default
-selection behind the `live` marker and `RUN_LIVE_AZURE_TESTS=1`. The following
-procedure requires separate operator approval and a verified immutable revision;
-it is not part of local validation and has not been run by this documentation
-repair:
+Live validation places real, billable phone calls and requires a deployed,
+verified release plus explicit operator approval:
 
 ```bash
 RUN_LIVE_AZURE_TESTS=1 uv run pytest -m live tests/e2e/test_live_call.py -vv
 ```
 
-They additionally require `LIVE_BASE_URL`, `LIVE_API_SCOPE`,
-`LIVE_AGENT_TENANT_ID`, `LIVE_AGENT_CLIENT_ID`, `LIVE_AGENT_CLIENT_SECRET`,
-and `DATABASE_URL`. `LIVE_APPROVAL_JSON` supplies approved scenarios, isolated
-database binding, retention, and reviewed evidence bindings;
-`LIVE_DEPLOYMENT_EVIDENCE_JSON` consumes the helper's successful `verify` output.
-These approval and deployment JSON values are validated by
-[tests/e2e/test_live_call.py](tests/e2e/test_live_call.py). Missing, stale, or
-mismatched evidence blocks calls. Each test docstring specifies the scenario
-setup; privacy checks also require the configured sensitive sentinel inputs.
+See [tests/e2e/test_live_call.py](tests/e2e/test_live_call.py) for the required
+credentials, deployment evidence, and scenario approvals.
 
-### Live Evidence Exports
+## Architecture
 
-[scripts/harvest_live_evidence.py](scripts/harvest_live_evidence.py) is a read-only
-operator tool. It queries Log Analytics using `DefaultAzureCredential`, never
-reads the application database, never places calls, and never creates an approval.
-The operator needs read access to the specified workspace and both source tables.
-Use existing authorized activity to establish table availability; missing tables
-are a blocker, not permission to make a bootstrap call.
+AskMyHuman runs as one FastAPI application on Azure Container Apps. It combines
+the MCP and HTTP interfaces, call orchestration, ACS callbacks, and maintenance
+work in a single replica. PostgreSQL stores request state and terminal results.
+ACS Call Automation and Azure AI Speech provide calling, text-to-speech, and
+speech recognition. Azure Monitor receives content-free operational telemetry.
 
-```bash
-uv run python scripts/harvest_live_evidence.py \
-  --workspace "$LOG_ANALYTICS_WORKSPACE_ID" \
-  --revision "$VERIFIED_REVISION" \
-  --acs-resource-id "$EXISTING_ACS_RESOURCE_ID" \
-  --application-insights-resource-id "$APPLICATION_INSIGHTS_RESOURCE_ID" \
-  --window-start "$EVIDENCE_WINDOW_START" \
-  --window-end "$EVIDENCE_WINDOW_END" \
-  --record "$EVIDENCE_RECORD" \
-  --output "$EVIDENCE_OUTPUT"
-```
-
-The workspace value is its customer/workspace UUID, not its ARM resource ID.
-Timestamps must include a UTC offset, the end cannot be in the future, and the
-output must be a new file in an existing directory. Keep exports and reviews in
-an ignored or external operator directory. Record values are references only;
-do not put prompts, answers, phone numbers, credentials, or connection strings in them.
-
-The shared contract is in
-[src/ask_my_human/live_evidence.py](src/ask_my_human/live_evidence.py):
-
-* `provider` contains only `acs-provider` rows from
-  `ACSCallAutomationIncomingOperations`, including hashed call/correlation IDs,
-  time, and result code. Each CreateCall result row is retained, even when IDs
-  repeat. Media `OperationId` is not an application request or attempt ID.
-* `application` contains separate `application-observations`: call-to-request
-  links, accepted callback deliveries, and pending joins. Provider call and event
-  IDs are SHA-256 hashed before application export. Receipt UUIDs identify HTTP
-  deliveries; accepted means the authenticated batch completed in the application,
-  not that ACS received the HTTP response or that a callback changed stored state.
-* The query is bound to explicit resources, revision (`AppVersion` from
-  `CONTAINER_APP_REVISION`), and time bounds. Missing/conflicting correlations,
-  sampled rows, partial responses, unexpected schemas, and more than 10,000 rows
-  per source fail closed. Other callers or revisions in the ACS window can cause
-  a reconciliation failure; do not drop those rows to obtain a pass.
-
-An export is a **bounded snapshot, not proof of complete ingestion**. Neither
-`queried_at`, a maximum ingestion timestamp, nor a quiet delay proves that no
-late records will arrive. After reviewing diagnostics, sampling settings (including
-`OTEL_TRACES_SAMPLER` overrides and ingestion sampling), source coverage, and
-ingestion health, the authorized reviewer supplies a separate JSON review:
-
-```json
-{
-  "source": "operator-export-review",
-  "record": "<review-record>",
-  "reviewer": "<approved-reviewer>",
-  "snapshot_sha256": "<SHA-256 printed by the harvester>",
-  "reviewed_at": "<UTC timestamp after the export>",
-  "diagnostics_verified": false,
-  "sampling_disabled": false,
-  "ingestion_checked": false,
-  "late_arrival_risk_accepted": false
-}
-```
-
-This deliberately non-passing template is not approval. Set each flag to JSON
-`true` only after the stated check and explicit acceptance of the remaining
-late-arrival risk. The harness rejects missing/coerced flags, an unapproved
-reviewer, future reviews, and changes to even one export byte.
-
-`LIVE_APPROVAL_JSON` must bind `evidence_file`, `evidence_review_file`,
-`evidence_reviewer`, `acs_resource_id`, `application_insights_resource_id`, and
-`telemetry_workspace`, as well as its existing deployment, database, decision,
-and scenario fields. Old provider/telemetry files with `complete_through` are
-not accepted. Have a reviewed preflight snapshot before starting, then export
-and review a window covering the entire selected scenario. The harness waits
-up to 180 seconds for the reviewed evidence; run scenarios individually when
-manual review needs coordination. Keep the window start before the test invocation,
-not just before an observed provider call. Continue reviewing through fixture
-teardown: a scenario's intermediate evidence may need a later snapshot for its
-final call audit.
-
-Preserve every generated export and review under unique archive names. To refresh
-the stable paths bound in `LIVE_APPROVAL_JSON`, stage byte-for-byte copies beside
-those paths and replace each active file with a same-directory rename. Updating
-two files is not atomic; the harness retries temporarily missing or mismatched
-pairs within its existing timeout and accepts only a matching reviewed pair.
-Complete both replacements before that timeout expires. Never edit snapshot
-bytes after review; a replacement export needs a new review hash.
-
-Exactly-one-call and sentinel-absence findings apply to the reviewed observation
-window and its documented late-arrival limitation. They are not an assertion
-that Azure supplied a global completeness watermark. Diagnostics deployment,
-the isolated database, carrier setup, and paid-call approval remain separate gates.
-
-The harness is implemented but live acceptance has not been executed. Release evidence must distinguish
-approval, rejection, a nonblank spoken answer, initial silence, no answer,
-carrier-exposed busy/decline, disconnect, initiating-client cancellation,
-forced deadline, join/replay, and authenticated duplicate callbacks. HTTP
-coverage alone does not prove live MCP timeout or cancellation behavior.
-Database row uniqueness alone does not prove one provider call attempt.
-
-Also require provider-side correlation, one terminal row, accelerated retention
-through the production purge path, and live telemetry sentinel absence for
-prompts, answers, phone numbers, idempotency keys, tokens, and callback bodies.
-Ensure required query dependencies are available and allow bounded telemetry
-ingestion time; skipped evidence is not a passing gate. Record carrier limits
-as explicitly approved external limitations, not successful scenarios. Final
-checks and remaining blockers belong in the review log.
-
-Azure resources use public service endpoints (no VNet) protected by TLS,
-managed identity, and application-level authentication; see decision DD-05 in
-[.copilot-tracking/plans/logs/2026-09-15/ask-my-human-tight-mvp-log.md](.copilot-tracking/plans/logs/2026-09-15/ask-my-human-tight-mvp-log.md)
-for the rationale.
+Azure resources use public TLS endpoints protected by managed identity and
+application-level authentication. Prompts, answers, phone numbers, and tokens
+are excluded from telemetry.
