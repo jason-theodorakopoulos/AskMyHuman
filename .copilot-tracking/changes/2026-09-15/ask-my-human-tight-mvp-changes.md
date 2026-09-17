@@ -675,3 +675,31 @@ deployment configuration. The complete local gate, immutable Azure deployment,
 authenticated revision verification, and live caller-supplied MCP input test all
 passed. Earlier Phase 5A and Phase 6 reviewed-matrix limitations remain separate
 follow-on release work.
+
+## Whole-Application Read-Only Review: 2026-09-17
+
+The review of commit `53ff25c` identified zero critical, seven major, and one
+minor finding. No application code, test, schema, migration, infrastructure,
+deployment, or documentation implementation was changed.
+
+### Major Findings
+
+* Deployed HTTP disconnects do not produce the promised cancellation behavior.
+* Preserved legacy terminal and failed rows cannot be materialized or replayed.
+* The image rollback workflow is not schema-compatible across newer Alembic revisions.
+* The runtime identity has broad ACS owner privileges because no suitable data-plane role exists.
+* The live privacy audit places raw sensitive values in Log Analytics query literals.
+* Paid live preflight accepts empty provider evidence.
+* Independently reviewed live release evidence remains incomplete.
+
+### Minor Finding
+
+* Unexpected MCP errors report the idempotency key as the request identifier.
+
+### Validation And Scope
+
+* The non-live gate passed with 538 tests and 92.03 percent coverage.
+* Ruff formatting, Ruff lint, strict mypy, editor diagnostics, and whitespace checks passed.
+* A non-billable deployed probe disproved the suspected forged-principal-header bypass:
+  Container Apps returned HTTP 401 before request validation or call creation.
+* Phase 8 in the related plan records remediation work as unchecked and unauthorized.

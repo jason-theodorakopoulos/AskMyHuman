@@ -305,6 +305,34 @@ builds the missing evidence sources and authorizes no paid call.
     `askmyhuman--15c356092028-7cc75b083121`; authentication and health verification
     passed, and a live caller-supplied MCP input request returned an answered result.
 
+### [ ] Implementation Phase 8: Whole-Application Review Remediation
+
+<!-- parallelizable: false -->
+
+This phase records the read-only whole-application review performed on commit
+`53ff25c`. It authorizes no implementation or deployment work.
+
+* [ ] Step 8.1: Make migrated legacy terminal and failed rows readable and replayable.
+  * Finding: Major; migration `20260917_0003` preserves rows with a null destination,
+    while repository materialization rejects every null destination.
+* [ ] Step 8.2: Define and test a schema-compatible rollback strategy across additive migrations.
+  * Finding: Major; container startup always upgrades to the image's Alembic head, so an
+    older approved image cannot start after a newer schema revision has been applied.
+* [ ] Step 8.3: Replace or explicitly approve the unsupported HTTP disconnect cancellation contract.
+  * Finding: Major; tracked as DR-19 because Container Apps ingress did not propagate
+    disconnect state to `Request.is_disconnected()`.
+* [ ] Step 8.4: Reduce or compensate for the Container App identity's ACS owner privileges.
+  * Finding: Major; tracked as DD-07 because ACS exposes no suitable data-plane role.
+* [ ] Step 8.5: Redesign telemetry privacy validation so production secrets are never sent as KQL literals.
+  * Finding: Major; the live harness currently searches for raw credentials and content values.
+* [ ] Step 8.6: Require nonempty, scenario-bound provider evidence before paid live scenarios.
+  * Finding: Major; empty provider attempts and application correlations currently reconcile.
+* [ ] Step 8.7: Complete and independently review the remaining live release matrix.
+  * Finding: Major; tracked as DR-16 through DR-19 and remains outside the completed
+    caller-supplied destination proof.
+* [ ] Step 8.8: Stop reporting an idempotency key as an MCP request ID on unexpected failures.
+  * Finding: Minor; the adapter has no accepted service request ID in that exception path.
+
 ## Merge Controls
 
 * Merge only branches based on the published Phase 0 foundation.

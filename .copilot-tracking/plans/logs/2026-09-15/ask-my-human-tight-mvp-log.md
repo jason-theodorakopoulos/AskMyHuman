@@ -357,3 +357,78 @@ revision state, diagnostic routing, and telemetry retention checks all passed.
     storage is necessary because recognition may run after process replacement.
   * Security constraint: Phone numbers remain content data and must not enter logs,
     telemetry, deployment output, or error details.
+
+## Whole-Application Review: 2026-09-17
+
+The read-only review assessed commit `53ff25c`. The complete local gate passed
+with 538 non-live tests and 92.03 percent coverage; Ruff formatting, Ruff lint,
+strict mypy, and editor diagnostics also passed. No code changes were made.
+
+### Review Findings
+
+* DR-20: Migrated legacy terminal and failed requests cannot be loaded or replayed.
+  * Severity: major
+  * Evidence: `migrations/versions/20260917_0003_request_phone_number.py` preserves
+    terminal rows with `phone_number IS NULL`, while
+    `src/ask_my_human/persistence/repository.py` raises before reconstructing them.
+  * Impact: Retrieval, idempotent replay, and the live retention probe can fail with
+    an internal dependency error for pre-Phase-7 rows.
+* DR-21: Approved older images are not guaranteed to start after a newer migration.
+  * Severity: major
+  * Evidence: `Dockerfile` runs `alembic upgrade head` before every server start,
+    while `scripts/deploy_azure.sh` permits rollback to a previously approved digest.
+  * Impact: An image that does not contain revision `20260917_0003` cannot resolve a
+    database already stamped at that revision, making rollback operationally unsafe.
+* DR-22: The live privacy audit sends raw sensitive values as Log Analytics query literals.
+  * Severity: major
+  * Evidence: `tests/e2e/test_live_call.py` interpolates tokens, database URLs,
+    connection strings, phone numbers, prompts, and answers into KQL searches.
+  * Impact: The audit itself can place the values into Azure query or audit surfaces,
+    so zero result rows do not establish end-to-end non-disclosure.
+* DR-23: Live preflight accepts an empty provider evidence snapshot.
+  * Severity: major
+  * Evidence: `src/ask_my_human/live_evidence.py` allows empty attempt and correlation
+    lists to reconcile, and the preflight telemetry check only runs `print count=0`.
+  * Impact: Paid scenarios can begin before independent provider evidence collection
+    has been demonstrated for the approved revision.
+* DR-24: Unexpected MCP dispatch errors use the idempotency key as `requestId`.
+  * Severity: minor
+  * Evidence: `src/ask_my_human/mcp_adapter/server.py` assigns
+    `request.idempotency_key` to the execution error's request identifier.
+  * Impact: Operators and callers can correlate an error to the wrong identifier.
+* DR-25: The application identity retains broad ACS management privileges.
+  * Severity: major
+  * Evidence: `infra/modules/communications-acs-role-assignment.bicep` assigns
+    Communication and Email Service Owner; DD-07 records the missing data-plane role.
+  * Impact: Compromise of the runtime identity has a larger ACS administration blast
+    radius than call execution alone requires.
+* DR-26: HTTP cancellation and the independently reviewed live matrix remain incomplete.
+  * Severity: major
+  * Evidence: DR-16 through DR-19 record missing reviewed outcomes and failed deployed
+    HTTP disconnect propagation despite passing direct ASGI tests.
+  * Impact: Phase 6 release acceptance remains partial even though Phase 7's live
+    caller-supplied destination proof passed.
+
+### Disproved Security Hypothesis
+
+* A forged `x-ms-client-principal` header did not bypass authentication through the
+  deployed Container Apps ingress. A non-billable invalid-body probe returned HTTP
+  401, so the hypothesized paid-call authentication bypass is not a finding.
+
+### Review Follow-On Work
+
+* WI-09: Repair legacy-row materialization and add migrated-row replay coverage (high priority).
+  * Source: DR-20
+  * Dependency: None
+* WI-10: Define expand-and-contract migration compatibility and test rollback images (high priority).
+  * Source: DR-21
+  * Dependency: Selection of the supported rollback window
+* WI-11: Replace raw-secret telemetry searches with non-secret canaries (high priority).
+  * Source: DR-22
+  * Dependency: Agreement on the privacy evidence model
+* WI-12: Require scenario-bound provider rows in paid-call preflight (high priority).
+  * Source: DR-23
+  * Dependency: None
+* WI-13: Evaluate a narrower ACS identity boundary or compensating controls (medium priority).
+  * Source: DR-25 and DD-07
+  * Dependency: Available ACS authorization capabilities
