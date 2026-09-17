@@ -27,6 +27,10 @@ Message = Annotated[
     str,
     StringConstraints(strip_whitespace=True, min_length=1, max_length=256, pattern=r"\S"),
 ]
+PhoneNumber = Annotated[
+    str,
+    StringConstraints(strict=True, pattern=r"^\+[1-9]\d{1,14}$"),
+]
 
 
 class RequestKind(StrEnum):
@@ -35,11 +39,12 @@ class RequestKind(StrEnum):
 
 
 class AskHumanRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
 
     kind: RequestKind
     prompt: Prompt
     idempotency_key: UUID = Field(alias="idempotencyKey")
+    phone_number: PhoneNumber = Field(alias="phoneNumber")
 
     @field_validator("prompt", mode="before")
     @classmethod

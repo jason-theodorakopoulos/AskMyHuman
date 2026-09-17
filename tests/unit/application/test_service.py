@@ -40,7 +40,12 @@ from ask_my_human.observability import AzureMonitorTelemetry, SpanName
 
 
 def make_request() -> AskHumanRequest:
-    return AskHumanRequest(kind=RequestKind.APPROVAL, prompt="Deploy?", idempotencyKey=uuid4())
+    return AskHumanRequest(
+        kind=RequestKind.APPROVAL,
+        prompt="Deploy?",
+        idempotencyKey=uuid4(),
+        phoneNumber="+15555550101",
+    )
 
 
 def make_service(
@@ -295,6 +300,24 @@ async def test_idempotency_conflict_is_rejected() -> None:
     assert error.value.code is ErrorCode.IDEMPOTENCY_CONFLICT
 
 
+@pytest.mark.asyncio
+async def test_changed_phone_number_with_same_idempotency_key_conflicts() -> None:
+    repository = FakeRequestRepository()
+    service = make_service(repository, FakeCallAutomationGateway(), FakeClock())
+    request = make_request()
+    principal = Principal("subject", "app")
+    await repository.create_or_replay(
+        principal,
+        request,
+        service._request_hash(request),
+        service._clock.now() + service._deadline,
+    )
+    changed = request.model_copy(update={"phone_number": "+15555550102"})
+    with pytest.raises(AskMyHumanError) as error:
+        await service.ask(principal, changed, FakeCancellationSignal())
+    assert error.value.code is ErrorCode.IDEMPOTENCY_CONFLICT
+
+
 async def admit_for_callback(
     repository: FakeRequestRepository,
     service: AskHumanService,
@@ -302,7 +325,12 @@ async def admit_for_callback(
     kind: RequestKind = RequestKind.APPROVAL,
     attach: bool = True,
 ) -> HumanRequest:
-    request = AskHumanRequest(kind=kind, prompt="Question?", idempotencyKey=uuid4())
+    request = AskHumanRequest(
+        kind=kind,
+        prompt="Question?",
+        idempotencyKey=uuid4(),
+        phoneNumber="+15555550101",
+    )
     _, stored = await repository.create_or_replay(
         Principal("subject", "app"),
         request,
@@ -858,7 +886,10 @@ async def test_composed_telemetry_exports_real_spans_metrics_and_no_sensitive_de
 
     service = AskHumanService(FakeRequestRepository(), ObservedGateway(), FakeClock(), telemetry)
     request = AskHumanRequest(
-        kind=RequestKind.APPROVAL, prompt="prompt-SENSITIVE", idempotencyKey=uuid4()
+        kind=RequestKind.APPROVAL,
+        prompt="prompt-SENSITIVE",
+        idempotencyKey=uuid4(),
+        phoneNumber="+15555550999",
     )
     try:
         with pytest.raises(AskMyHumanError):
@@ -884,6 +915,7 @@ async def test_composed_telemetry_exports_real_spans_metrics_and_no_sensitive_de
         capture = json.dumps([span.to_json() for span in spans]) + str(metric_data)
         assert "askhuman_dependency_failures_total" in capture
         assert "SENSITIVE" not in capture
+        assert request.phone_number not in capture
     finally:
         tracer_provider.shutdown()
         meter_provider.shutdown()

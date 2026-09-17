@@ -37,9 +37,6 @@ param azureAiEndpoint string
 @secure()
 @description('ACS source phone number in E.164 format.')
 param acsSourcePhoneNumber string
-@secure()
-@description('The sole destination phone number in E.164 format.')
-param myMobileNumber string
 @description('Microsoft Entra tenant ID.')
 param entraTenantId string
 @description('Microsoft Entra protected-resource client ID.')
@@ -155,10 +152,6 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
           value: acsSourcePhoneNumber
         }
         {
-          name: 'my-mobile-number'
-          value: myMobileNumber
-        }
-        {
           name: 'entra-client-secret'
           value: entraClientSecret
         }
@@ -190,10 +183,6 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
             {
               name: 'ACS_SOURCE_PHONE_NUMBER'
               secretRef: 'acs-source-phone-number'
-            }
-            {
-              name: 'MY_MOBILE_NUMBER'
-              secretRef: 'my-mobile-number'
             }
             {
               name: 'AZURE_AI_ENDPOINT'

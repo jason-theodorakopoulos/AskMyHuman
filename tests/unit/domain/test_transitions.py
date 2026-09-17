@@ -64,7 +64,10 @@ def test_terminal_request_cannot_transition_again() -> None:
         request_id=request_id,
         principal=Principal(subject_id="subject", application_id="app"),
         request=AskHumanRequest(
-            kind=RequestKind.APPROVAL, prompt="Continue?", idempotencyKey=uuid4()
+            kind=RequestKind.APPROVAL,
+            prompt="Continue?",
+            idempotencyKey=uuid4(),
+            phoneNumber="+15555550101",
         ),
         request_hash="hash",
         state=RequestState.RESPONDED,
@@ -82,7 +85,10 @@ def test_request_ignores_event_for_another_request() -> None:
         request_id=uuid4(),
         principal=Principal(subject_id="subject", application_id="app"),
         request=AskHumanRequest(
-            kind=RequestKind.APPROVAL, prompt="Continue?", idempotencyKey=uuid4()
+            kind=RequestKind.APPROVAL,
+            prompt="Continue?",
+            idempotencyKey=uuid4(),
+            phoneNumber="+15555550101",
         ),
         request_hash="hash",
         state=RequestState.PENDING,

@@ -100,7 +100,6 @@ async def test_application_container_migrates_and_serves_health_without_query_lo
             "DATABASE_URL": "postgresql://test:smoke%40password%25@127.0.0.1:5432/test",
             "ACS_ENDPOINT": "https://example.communication.azure.com",
             "ACS_SOURCE_PHONE_NUMBER": "+15555550100",
-            "MY_MOBILE_NUMBER": "+15555550101",
             "AZURE_AI_ENDPOINT": "https://example.cognitiveservices.azure.com",
             "ACS_CALLBACK_URL": "https://example.invalid/v1/callbacks/acs",
             "ACS_CALLBACK_AUDIENCE": "00000000-0000-4000-8000-000000000001",
@@ -152,7 +151,7 @@ async def test_application_container_migrates_and_serves_health_without_query_lo
                 ]
             )
             assert exit_code == 0
-            assert b"20260916_0002" in output
+            assert b"20260917_0003" in output
             stdout, stderr = container.get_logs()
             assert b"SMOKE_QUERY_SENTINEL" not in stdout + stderr
             assert b"smoke%40password" not in stdout + stderr
@@ -218,7 +217,6 @@ def settings() -> Settings:
         database_url=SecretStr("postgresql://localhost:5432/askmyhuman"),
         acs_endpoint=AnyHttpUrl("https://example.communication.azure.com"),
         acs_source_phone_number=SecretStr("+15555550100"),
-        my_mobile_number=SecretStr("+15555550101"),
         azure_ai_endpoint=AnyHttpUrl("https://example.cognitiveservices.azure.com"),
         acs_callback_url=AnyHttpUrl(f"https://{HOST}/v1/callbacks/acs"),
         acs_callback_audience="00000000-0000-4000-8000-000000000001",
@@ -309,7 +307,12 @@ async def test_composed_app_attaches_content_free_server_spans(
             response = await client.post(
                 f"/v1/requests?token={sentinel}",
                 headers={"x-ms-client-principal": principal_header(), "Authorization": sentinel},
-                json={"kind": "approval", "prompt": sentinel, "idempotencyKey": str(uuid4())},
+                json={
+                    "kind": "approval",
+                    "prompt": sentinel,
+                    "idempotencyKey": str(uuid4()),
+                    "phoneNumber": "+15555550999",
+                },
             )
         assert response.status_code == 200
         spans = exporter.get_finished_spans()
@@ -469,7 +472,12 @@ async def test_request_route_uses_the_composed_use_case(composition: Composition
         response = await client.post(
             "/v1/requests",
             headers={"x-ms-client-principal": principal_header()},
-            json={"kind": "approval", "prompt": "Deploy now?", "idempotencyKey": str(uuid4())},
+            json={
+                "kind": "approval",
+                "prompt": "Deploy now?",
+                "idempotencyKey": str(uuid4()),
+                "phoneNumber": "+15555550101",
+            },
         )
 
     assert response.status_code == 200
@@ -483,7 +491,12 @@ async def test_request_route_rejects_unauthenticated_callers(composition: Compos
     async with running_client(composition) as client:
         response = await client.post(
             "/v1/requests",
-            json={"kind": "approval", "prompt": "Deploy now?", "idempotencyKey": str(uuid4())},
+            json={
+                "kind": "approval",
+                "prompt": "Deploy now?",
+                "idempotencyKey": str(uuid4()),
+                "phoneNumber": "+15555550101",
+            },
         )
 
     assert response.status_code == 401
@@ -598,6 +611,7 @@ async def test_mounted_mcp_enforces_the_http_authorization_boundary(
                         "kind": "approval",
                         "prompt": "Deploy?",
                         "idempotencyKey": str(uuid4()),
+                        "phoneNumber": "+15555550101",
                     },
                 },
             },

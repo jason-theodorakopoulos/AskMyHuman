@@ -27,7 +27,6 @@ services:
       # Placeholders that satisfy startup validation; no Azure call is made locally.
       ACS_ENDPOINT: https://local.communication.azure.com
       ACS_SOURCE_PHONE_NUMBER: "+15555550100"
-      MY_MOBILE_NUMBER: "+15555550101"
       AZURE_AI_ENDPOINT: https://local.cognitiveservices.azure.com
       ACS_CALLBACK_AUDIENCE: local-acs-immutable-resource-id
       ACS_CALLBACK_URL: https://local.example.invalid/v1/callbacks/acs

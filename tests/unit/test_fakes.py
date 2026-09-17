@@ -28,7 +28,12 @@ from ask_my_human.errors import ErrorCode
 
 
 def request() -> AskHumanRequest:
-    return AskHumanRequest(kind=RequestKind.APPROVAL, prompt="Deploy?", idempotencyKey=uuid4())
+    return AskHumanRequest(
+        kind=RequestKind.APPROVAL,
+        prompt="Deploy?",
+        idempotencyKey=uuid4(),
+        phoneNumber="+15555550101",
+    )
 
 
 def principal() -> Principal:

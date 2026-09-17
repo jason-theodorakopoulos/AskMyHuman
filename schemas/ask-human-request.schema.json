@@ -20,6 +20,11 @@
     "kind": {
       "$ref": "#/$defs/RequestKind"
     },
+    "phoneNumber": {
+      "pattern": "^\\+[1-9]\\d{1,14}$",
+      "title": "Phonenumber",
+      "type": "string"
+    },
     "prompt": {
       "maxLength": 2000,
       "minLength": 1,
@@ -31,7 +36,8 @@
   "required": [
     "kind",
     "prompt",
-    "idempotencyKey"
+    "idempotencyKey",
+    "phoneNumber"
   ],
   "title": "AskHumanRequest",
   "type": "object"

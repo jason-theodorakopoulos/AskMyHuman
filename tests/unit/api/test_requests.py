@@ -31,6 +31,7 @@ def request_body(**overrides: object) -> dict[str, object]:
         "kind": "approval",
         "prompt": "Approve deployment?",
         "idempotencyKey": str(uuid4()),
+        "phoneNumber": "+15555550101",
     }
     body.update(overrides)
     return body
@@ -58,17 +59,30 @@ async def test_terminal_human_availability_result_returns_200() -> None:
 
 
 @pytest.mark.asyncio
-async def test_deployment_settings_are_rejected_before_use_case() -> None:
+async def test_caller_supplied_phone_number_reaches_use_case() -> None:
     use_case = FakeAskHumanUseCase()
 
     async with AsyncClient(
         transport=ASGITransport(app=app_for(use_case)), base_url="http://test"
     ) as client:
-        response = await client.post("/v1/requests", json=request_body(phoneNumber="+15555550100"))
+        response = await client.post("/v1/requests", json=request_body(phoneNumber="+15555550123"))
+
+    assert response.status_code == 200
+    assert use_case.requests[0][1].phone_number == "+15555550123"
+
+
+@pytest.mark.asyncio
+async def test_invalid_phone_number_is_rejected_without_dispatch_or_leakage() -> None:
+    use_case = FakeAskHumanUseCase()
+    sensitive = "private-invalid-destination"
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app_for(use_case)), base_url="http://test"
+    ) as client:
+        response = await client.post("/v1/requests", json=request_body(phoneNumber=sensitive))
 
     assert response.status_code == 400
-    assert response.json()["code"] == "invalid_request"
-    assert response.json()["requestId"] is None
+    assert sensitive not in response.text
     assert use_case.requests == []
 
 

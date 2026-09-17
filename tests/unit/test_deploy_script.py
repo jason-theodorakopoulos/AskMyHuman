@@ -167,7 +167,6 @@ def deployment(tmp_path: Path) -> Deployment:
         ),
         "AZURE_LOCATION": "westeurope",
         "POSTGRES_ADMIN_PASSWORD": "dummy-private-password",
-        "MY_MOBILE_NUMBER": "+15555550101",
         "ACS_SOURCE_PHONE_NUMBER": "+15555550100",
         "ENTRA_TENANT_ID": SUBSCRIPTION,
         "ENTRA_CLIENT_ID": SUBSCRIPTION,
@@ -480,7 +479,7 @@ def test_failed_checks_never_emit_release_evidence(
 
 def test_verify_does_not_require_deployment_secrets(deployment: Deployment) -> None:
     deployment.verification()
-    for variable in ("POSTGRES_ADMIN_PASSWORD", "ENTRA_CLIENT_SECRET", "MY_MOBILE_NUMBER"):
+    for variable in ("POSTGRES_ADMIN_PASSWORD", "ENTRA_CLIENT_SECRET"):
         deployment.env.pop(variable)
     result = deployment.run("verify")
     assert result.returncode == 0, result.stderr

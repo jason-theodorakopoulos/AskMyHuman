@@ -5,23 +5,35 @@ description: Synchronous human approval and spoken answers for authenticated AI 
 
 ## Human judgment, one call away
 
-AskMyHuman gives autonomous agents a direct way to ask for human input. An
-authenticated agent submits an approval request or a free-form question, and
-the service calls one configured person through Azure Communication Services
-(ACS). The answer returns in the same request.
+AI agents can act independently, but some decisions still need human judgment.
+AskMyHuman gives an authenticated agent a direct way to request that judgment:
+the agent submits an approval request or a free-form question, selects a phone
+number, and the service calls that person through Azure Communication Services
+(ACS). The answer returns to the agent in the same request.
 
-Use AskMyHuman when an agent needs a clear decision before continuing, such as
-approving a deployment, confirming an action, or answering a question that
-requires human context.
+The phone call is the bridge because it is one of the most universal interfaces
+available. There is no new app to install, account to create, or dashboard to
+monitor. A person can respond from a familiar device wherever they are, without
+learning another workflow. The call explains the context and lets them approve,
+reject, or provide a spoken answer, keeping the agent moving while the human
+stays in control.
+
+Behind that familiar interaction, AskMyHuman provides a native MCP tool and a
+synchronous API. It manages callbacks, deadlines, duplicate requests, and
+response states, turning human judgment into one dependable, structured result
+the agent can act on. Use it for decisions such as approving a deployment,
+confirming a sensitive action, or answering a question that requires human
+context.
 
 ## How it works
 
 1. An agent calls the `ask_human` MCP tool or sends `POST /v1/requests`.
-2. AskMyHuman places an outbound call to `MY_MOBILE_NUMBER`.
-3. ACS reads the prompt using Azure AI Speech.
-4. The human approves, rejects, or speaks an answer.
-5. ACS recognizes the response and sends it to AskMyHuman by callback.
-6. The agent receives the terminal result on the open request.
+2. The request supplies the human destination as an E.164 `phoneNumber`.
+3. AskMyHuman persists the destination and places one outbound ACS call.
+4. ACS reads the prompt using Azure AI Speech.
+5. The human approves, rejects, or speaks an answer.
+6. ACS recognizes the response and sends it to AskMyHuman by callback.
+7. The agent receives the terminal result on the open request.
 
 ```text
 Agent -> AskMyHuman -> ACS phone call -> Human
@@ -34,22 +46,23 @@ Agent <- AskMyHuman <- ACS callback  <- Human response
 * Free-form questions with speech-to-text answers
 * MCP Streamable HTTP and REST interfaces
 * Microsoft Entra ID authentication and application-role authorization
-* Durable request state and idempotent replay with PostgreSQL
+* Durable request state, destination, and idempotent replay with PostgreSQL
 * Content-free OpenTelemetry traces and metrics
 * A fixed 210-second request deadline by default
 
-The current release supports one configured human, one call per request, and
-one response. It does not support retries, escalation, multiple recipients,
-multi-turn conversations, asynchronous retrieval, or horizontal scaling.
+The current release supports one caller-selected human, one call per request,
+and one response. It does not support retries, escalation, calling multiple
+recipients in one request, multi-turn conversations, asynchronous retrieval,
+or horizontal scaling.
 
 ## Interfaces
 
 ### MCP
 
 Connect an MCP client to `/mcp` and invoke `ask_human` with the same fields as
-the HTTP request below. The calling application must have the
-`AskHuman.Invoke` application role, and its application ID must be listed in
-`AUTHORIZED_AGENT_APP_IDS`.
+the HTTP request below, including the required `phoneNumber`. The calling
+application must have the `AskHuman.Invoke` application role, and its application
+ID must be listed in `AUTHORIZED_AGENT_APP_IDS`.
 
 Use a client timeout of at least 225 seconds.
 
@@ -61,7 +74,8 @@ Send an authenticated request to `POST /v1/requests`:
 {
   "kind": "approval",
   "prompt": "Deploy build 482 to production?",
-  "idempotencyKey": "5b1b3b7a-8c9e-4c39-9c7e-8b6b6b6b6b6b"
+  "idempotencyKey": "5b1b3b7a-8c9e-4c39-9c7e-8b6b6b6b6b6b",
+  "phoneNumber": "+15555550101"
 }
 ```
 
@@ -76,8 +90,9 @@ A completed approval returns:
 ```
 
 Set `kind` to `approval` for an approve/reject choice or `input` for a spoken
-answer. Completed outcomes are `approved`, `rejected`, or `answered`. Calls
-that do not complete can return `no_answer`, `busy`, `declined`,
+answer. Supply `phoneNumber` in strict E.164 form: `+`, a nonzero first digit,
+and 2 to 15 total digits. Completed outcomes are `approved`, `rejected`, or
+`answered`. Calls that do not complete can return `no_answer`, `busy`, `declined`,
 `disconnected`, `cancelled`, or `deadline_exceeded`.
 
 Other endpoints:
@@ -89,7 +104,8 @@ Other endpoints:
 
 Idempotency keys are scoped to the authenticated agent. Reusing a key with the
 same request joins an active wait or replays its result without placing another
-call. Reusing it with different content returns HTTP 409. Because this release
+call. Reusing it with different content, including another `phoneNumber`,
+returns HTTP 409. Because this release
 allows one active request globally, another request returns HTTP 429 while the
 slot is occupied.
 
@@ -121,7 +137,6 @@ your own settings. Never commit credentials or phone numbers.
 | `DATABASE_URL`                          | PostgreSQL connection string                                         |
 | `ACS_ENDPOINT`                          | ACS resource endpoint                                                |
 | `ACS_SOURCE_PHONE_NUMBER`               | Outbound-enabled ACS number in E.164 format                           |
-| `MY_MOBILE_NUMBER`                      | Human recipient number in E.164 format                               |
 | `AZURE_AI_ENDPOINT`                     | Azure AI Speech endpoint for playback and recognition                |
 | `ACS_CALLBACK_URL`                      | Public HTTPS URL ending in `/v1/callbacks/acs`                        |
 | `ACS_CALLBACK_AUDIENCE`                 | Immutable ACS resource ID used to validate callback tokens           |
@@ -182,8 +197,10 @@ credentials, deployment evidence, and scenario approvals.
 AskMyHuman runs as one FastAPI application on Azure Container Apps. It combines
 the MCP and HTTP interfaces, call orchestration, ACS callbacks, and maintenance
 work in a single replica. PostgreSQL stores request state and terminal results.
-ACS Call Automation and Azure AI Speech provide calling, text-to-speech, and
-speech recognition. Azure Monitor receives content-free operational telemetry.
+It also stores the caller-selected destination so callbacks after a restart use
+the same human. ACS Call Automation and Azure AI Speech provide calling,
+text-to-speech, and speech recognition. Azure Monitor receives content-free
+operational telemetry.
 
 Azure resources use public TLS endpoints protected by managed identity and
 application-level authentication. Prompts, answers, phone numbers, and tokens

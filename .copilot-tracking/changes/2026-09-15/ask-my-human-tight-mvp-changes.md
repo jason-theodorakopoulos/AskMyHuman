@@ -614,3 +614,38 @@ diagnostic categories, application JWT authentication, and passing local release
 gates. Phase 5 and release acceptance remain partial until the reviewed live
 matrix and retention evidence are complete or explicit carrier limitations are
 approved.
+
+## Phase 7 Start: 2026-09-17
+
+The user requested that MCP invocations supply the human phone number instead of
+using the fixed `MY_MOBILE_NUMBER` environment value. The implementation must
+extend the durable request contract because callback-driven recognition reloads
+request state after admission. No code, schema, migration, infrastructure, or
+deployment change is claimed complete at this point.
+
+## Phase 7 Local Implementation: 2026-09-17
+
+### Added
+
+* migrations/versions/20260917_0003_request_phone_number.py - Persists validated
+  destinations, safely terminalizes legacy pending rows, and preserves terminal history.
+
+### Modified
+
+* The request contract and generated schema require E.164 `phoneNumber`.
+* Persistence round-trips the destination and idempotency identity includes it.
+* ACS call creation and recognition construct the target from each durable request.
+* Runtime, Bicep, deployment, Compose, smoke, CI, and documentation surfaces no
+  longer require `MY_MOBILE_NUMBER`.
+* Contract, HTTP, MCP, service, persistence, migration, ACS, integration,
+  deployment, and live-harness tests cover the caller-supplied destination.
+
+### Validation
+
+* Focused contract, MCP, ACS, migration, and persistence suites passed with 60 tests.
+* The intended live destination validates against the exact request contract.
+* No runtime or deployment reference to `MY_MOBILE_NUMBER` remains.
+* The complete local release gate passed: lock and frozen sync, generated schema
+  drift, Ruff formatting and lint, mypy over 58 source files, 538 non-live tests,
+  92.03% coverage, Compose configuration, production image build, Bicep build,
+  shell syntax, and whitespace validation.

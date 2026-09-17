@@ -30,6 +30,7 @@ def arguments() -> dict[str, str]:
         "kind": "approval",
         "prompt": "Deploy now?",
         "idempotencyKey": str(REQUEST_ID),
+        "phoneNumber": "+15555550101",
     }
 
 
@@ -78,6 +79,7 @@ def test_tool_uses_checked_in_request_and_result_schemas() -> None:
 
     assert ASK_HUMAN_TOOL.input_schema == request_schema
     assert ASK_HUMAN_TOOL.output_schema == result_schema
+    assert "phoneNumber" in ASK_HUMAN_TOOL.input_schema["required"]
 
 
 def test_app_factory_exposes_only_streamable_http_mcp_route() -> None:
@@ -141,6 +143,25 @@ async def test_invalid_arguments_are_protocol_error_without_dispatch(
         )
 
     assert raised.value.code == INVALID_PARAMS
+    assert raised.value.data == {"fields": ["unexpected"]}
+    assert use_case.calls == []
+
+
+@pytest.mark.asyncio
+async def test_invalid_phone_number_is_protocol_error_without_leaking_value(
+    authenticated_agent: None,
+) -> None:
+    use_case = RecordingUseCase()
+    invalid = arguments() | {"phoneNumber": "private-invalid-destination"}
+
+    with pytest.raises(MCPError) as raised:
+        await AskHumanMcpAdapter(use_case).call_tool(
+            context(), CallToolRequestParams(name="ask_human", arguments=invalid)
+        )
+
+    assert raised.value.code == INVALID_PARAMS
+    assert raised.value.data == {"fields": ["phoneNumber"]}
+    assert "private-invalid-destination" not in str(raised.value)
     assert use_case.calls == []
 
 

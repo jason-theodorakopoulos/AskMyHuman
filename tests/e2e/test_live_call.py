@@ -416,7 +416,12 @@ async def _ask(client: httpx.AsyncClient, prompt: str, *, kind: str, key: UUID) 
     started = monotonic()
     response = await client.post(
         "/v1/requests",
-        json={"kind": kind, "prompt": prompt, "idempotencyKey": str(key)},
+        json={
+            "kind": kind,
+            "prompt": prompt,
+            "idempotencyKey": str(key),
+            "phoneNumber": _required_env("LIVE_HUMAN_PHONE_NUMBER"),
+        },
     )
     assert monotonic() - started <= 210, "The request exceeded the product deadline."
     return response
@@ -830,7 +835,13 @@ async def _mcp_ask(
 ) -> dict[str, object]:
     started = monotonic()
     response = await session.call_tool(
-        "ask_human", {"kind": "approval", "prompt": prompt, "idempotencyKey": str(key)}
+        "ask_human",
+        {
+            "kind": "approval",
+            "prompt": prompt,
+            "idempotencyKey": str(key),
+            "phoneNumber": _required_env("LIVE_HUMAN_PHONE_NUMBER"),
+        },
     )
     if response.is_error:
         raise AssertionError("MCP returned an execution error (content suppressed).")

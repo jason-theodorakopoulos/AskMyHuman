@@ -116,7 +116,6 @@ jobs:
           CONTAINER_REGISTRY_SERVER: placeholder.azurecr.io
           CONTAINER_REGISTRY_RESOURCE_ID: /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/placeholder/providers/Microsoft.ContainerRegistry/registries/placeholder
           POSTGRES_ADMIN_PASSWORD: placeholder
-          MY_MOBILE_NUMBER: "+15555550101"
           ACS_SOURCE_PHONE_NUMBER: "+15555550100"
           ENTRA_TENANT_ID: 00000000-0000-0000-0000-000000000000
           ENTRA_CLIENT_ID: 00000000-0000-0000-0000-000000000000

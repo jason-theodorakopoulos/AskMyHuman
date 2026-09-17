@@ -11,7 +11,6 @@ def test_oauth_protected_resource_metadata_is_exact_and_sanitized() -> None:
             "database_url": "postgresql://localhost:5432/askmyhuman",
             "acs_endpoint": "https://secret.communication.azure.com",
             "acs_source_phone_number": "+15555550100",
-            "my_mobile_number": "+15555550101",
             "azure_ai_endpoint": "https://secret.cognitiveservices.azure.com",
             "acs_callback_audience": "https://askmyhuman.example.com",
             "entra_tenant_id": "test-tenant-id",

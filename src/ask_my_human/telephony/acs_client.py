@@ -29,7 +29,6 @@ class AcsCallAutomationGateway:
         *,
         callback_url: str,
         source_phone_number: str,
-        target_phone_number: str,
         cognitive_services_endpoint: str,
         locale: str,
         voice_name: str,
@@ -42,7 +41,6 @@ class AcsCallAutomationGateway:
         self._client = client
         self._callback_url = callback_url
         self._source = PhoneNumberIdentifier(source_phone_number)
-        self._target = PhoneNumberIdentifier(target_phone_number)
         self._cognitive_services_endpoint = cognitive_services_endpoint
         self._locale = locale
         self._voice_name = voice_name
@@ -60,15 +58,15 @@ class AcsCallAutomationGateway:
             client,
             callback_url=callback_url,
             source_phone_number=settings.acs_source_phone_number.get_secret_value(),
-            target_phone_number=settings.my_mobile_number.get_secret_value(),
             cognitive_services_endpoint=str(settings.azure_ai_endpoint).rstrip("/"),
             locale=settings.locale,
             voice_name=settings.voice_name,
         )
 
     async def create_call(self, request: HumanRequest) -> str:
+        target = PhoneNumberIdentifier(request.request.phone_number)
         properties = await self._client.create_call(
-            self._target,
+            target,
             self._callback_url,
             source_caller_id_number=self._source,
             operation_context=str(request.request_id),
@@ -81,6 +79,7 @@ class AcsCallAutomationGateway:
 
     async def start_recognition(self, call_id: str, request: HumanRequest) -> None:
         connection = self._client.get_call_connection(call_id)
+        target = PhoneNumberIdentifier(request.request.phone_number)
         prompt = TextSource(
             text=self._recognition_prompt(request),
             source_locale=self._locale,
@@ -90,7 +89,7 @@ class AcsCallAutomationGateway:
         if request.request.kind is RequestKind.APPROVAL:
             await connection.start_recognizing_media(
                 RecognizeInputType.CHOICES,
-                self._target,
+                target,
                 initial_silence_timeout=20,
                 play_prompt=prompt,
                 operation_context=operation_context,
@@ -101,7 +100,7 @@ class AcsCallAutomationGateway:
 
         await connection.start_recognizing_media(
             RecognizeInputType.SPEECH,
-            self._target,
+            target,
             initial_silence_timeout=20,
             play_prompt=prompt,
             operation_context=operation_context,

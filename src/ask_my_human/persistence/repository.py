@@ -23,7 +23,7 @@ from ask_my_human.errors import ErrorCode
 
 _COLUMNS = """
 request_id, subject_id, application_id, idempotency_key, request_hash, kind, prompt,
-status, outcome, answer, error_code, error_message, acs_call_connection_id,
+phone_number, status, outcome, answer, error_code, error_message, acs_call_connection_id,
 created_at, expires_at, completed_at, recognition_started
 """
 
@@ -238,8 +238,8 @@ class PostgresRequestRepository:
                 f"""
                 INSERT INTO human_requests (
                     request_id, subject_id, application_id, idempotency_key, request_hash,
-                    kind, prompt, status, created_at, expires_at
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, 'pending', now(), %s)
+                    kind, prompt, phone_number, status, created_at, expires_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'pending', now(), %s)
                 ON CONFLICT DO NOTHING
                 RETURNING {_COLUMNS}
                 """,
@@ -251,6 +251,7 @@ class PostgresRequestRepository:
                     request_hash,
                     request.kind.value,
                     request.prompt,
+                    request.phone_number,
                     expires_at,
                 ),
             )
@@ -275,6 +276,8 @@ class PostgresRequestRepository:
 
     @staticmethod
     def _to_domain(row: dict[str, Any]) -> HumanRequest:
+        if row["phone_number"] is None:
+            raise RuntimeError("Legacy request has no callable destination")
         result = None
         if row["status"] in {RequestState.RESPONDED.value, RequestState.EXPIRED.value}:
             result = AskHumanResult(
@@ -290,6 +293,7 @@ class PostgresRequestRepository:
                 kind=RequestKind(row["kind"]),
                 prompt=row["prompt"],
                 idempotencyKey=row["idempotency_key"],
+                phoneNumber=row["phone_number"],
             ),
             request_hash=row["request_hash"],
             state=RequestState(row["status"]),

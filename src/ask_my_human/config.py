@@ -19,7 +19,6 @@ class Settings(BaseSettings):
     database_url: SecretStr
     acs_endpoint: AnyHttpUrl
     acs_source_phone_number: SecretStr
-    my_mobile_number: SecretStr
     azure_ai_endpoint: AnyHttpUrl
     acs_callback_url: AnyHttpUrl
     acs_callback_audience: str
@@ -63,7 +62,7 @@ class Settings(BaseSettings):
             return tuple(item.strip() for item in value.split(",") if item.strip())
         return value
 
-    @field_validator("acs_source_phone_number", "my_mobile_number", mode="before")
+    @field_validator("acs_source_phone_number", mode="before")
     @classmethod
     def validate_phone_number(cls, value: object) -> object:
         candidate = value.get_secret_value() if isinstance(value, SecretStr) else value

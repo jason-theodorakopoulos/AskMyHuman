@@ -34,6 +34,7 @@ async def add_request(
         kind=RequestKind.APPROVAL,
         prompt="Deploy?",
         idempotencyKey=uuid4(),
+        phoneNumber="+15555550101",
     )
     _, stored = await repository.create_or_replay(
         Principal("subject", "app"), request, "hash", clock.now()

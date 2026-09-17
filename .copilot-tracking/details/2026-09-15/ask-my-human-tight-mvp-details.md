@@ -1298,3 +1298,50 @@ Success criteria:
 Dependencies:
 
 * Step 5A.3 isolated database and telemetry evidence
+
+## Implementation Phase 7: Caller-Supplied Human Phone Number
+
+### Step 7.1: Extend The Durable Invocation Contract
+
+Add a required `phoneNumber` field using strict E.164 validation. Include the
+destination in idempotency identity and persist it with each request because ACS
+callbacks reload the request before starting recognition. Add an additive
+migration that preserves terminal history and fails safely if legacy pending rows
+cannot be resumed without a destination.
+
+Success criteria:
+
+* MCP and HTTP invocation schemas require `phoneNumber` in E.164 form.
+* Invalid, blank, or extra-long values fail before admission or call creation.
+* Reusing an idempotency key with another destination is a conflict.
+* Restarted callback handling uses the stored destination without process memory.
+
+### Step 7.2: Use Per-Request ACS Destinations
+
+Construct the ACS target participant from the persisted request for both
+`create_call` and `start_recognition`. Remove the fixed target from gateway
+construction and remove `MY_MOBILE_NUMBER` from settings, Bicep, deployment
+bindings, smoke scripts, examples, and tests. Keep the ACS source number as a
+deployment secret.
+
+Success criteria:
+
+* Every outbound call and recognition action targets the invocation's phone number.
+* No runtime or deployment path reads `MY_MOBILE_NUMBER`.
+* Phone numbers remain absent from logs, telemetry, deployment outputs, and errors.
+
+### Step 7.3: Validate And Deploy
+
+Regenerate checked-in JSON schemas and update HTTP, MCP, persistence, telephony,
+integration, deployment, and documentation coverage. Run focused tests after the
+first code edit, then the complete repository gate. Publish and deploy through the
+existing approval-bound immutable workflow and execute one separately approved live
+MCP input call using the supplied `phoneNumber`.
+
+Success criteria:
+
+* Schema drift, Ruff, mypy, non-live tests, coverage, Compose, image smoke, shell,
+  and Bicep gates pass.
+* The deployed revision is active, healthy, authentication-verified, and bound to
+  its source SHA and image digest.
+* A live MCP invocation reaches the supplied destination and returns its spoken answer.

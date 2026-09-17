@@ -18,7 +18,8 @@ integration.
 
 * Build a very tight MVP and ship it quickly. Source: user request on 2026-09-15.
 * Let an agent request approval or free-form input. Source: README.md (Lines 6-7).
-* Route every request to one owner configured through `MY_MOBILE_NUMBER`. Source: README.md (Lines 7-8).
+* Route each request to the E.164 phone number supplied by the authenticated caller.
+  Source: user request on 2026-09-17.
 * Reach the owner through one phone call and provide enough context for a decision. Source: README.md (Lines 8-9).
 * Return approve, reject, or a spoken free-form answer through a voice interaction. Source: README.md (Lines 9-10).
 * Track pending, responded, and expired states and keep the operation synchronous. Source: README.md (Lines 10-12).
@@ -282,6 +283,24 @@ builds the missing evidence sources and authorizes no paid call.
   * Details: .copilot-tracking/details/2026-09-15/ask-my-human-tight-mvp-details.md (Lines 1112-1122)
   * Completed 2026-09-17: no isolated local defect remains. The release is blocked
     on the incomplete reviewed live matrix recorded in the changes and planning logs.
+
+### [ ] Implementation Phase 7: Caller-Supplied Human Phone Number
+
+<!-- parallelizable: false -->
+
+* [x] Step 7.1: Add a required E.164 `phoneNumber` to the invocation contract and
+  persist it so callback-driven recognition remains restart-safe.
+  * Details: .copilot-tracking/details/2026-09-15/ask-my-human-tight-mvp-details.md (Phase 7)
+* [x] Step 7.2: Make ACS create-call and recognition operations use the persisted
+  per-request destination, then remove `MY_MOBILE_NUMBER` from runtime and deployment settings.
+  * Details: .copilot-tracking/details/2026-09-15/ask-my-human-tight-mvp-details.md (Phase 7)
+* [ ] Step 7.3: Regenerate schemas, update tests and documentation, run the full gate,
+  deploy an immutable revision, and verify one live MCP input call.
+  * Details: .copilot-tracking/details/2026-09-15/ask-my-human-tight-mvp-details.md (Phase 7)
+  * Partial 2026-09-17: schemas and documentation are updated; focused contract,
+    MCP, ACS, migration, and persistence validation passed with 60 tests.
+  * Partial 2026-09-17: the full local gate passed with 538 non-live tests and
+    92.03% coverage; immutable deployment and live MCP verification remain.
 
 ## Merge Controls
 

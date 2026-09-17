@@ -22,7 +22,10 @@ from ask_my_human.domain.models import (
 from ask_my_human.telephony.acs_client import AcsCallAutomationGateway
 
 
-def human_request(kind: RequestKind = RequestKind.APPROVAL) -> HumanRequest:
+def human_request(
+    kind: RequestKind = RequestKind.APPROVAL,
+    phone_number: str = "+15555550101",
+) -> HumanRequest:
     now = datetime.now(UTC)
     return HumanRequest(
         request_id=uuid4(),
@@ -31,6 +34,7 @@ def human_request(kind: RequestKind = RequestKind.APPROVAL) -> HumanRequest:
             kind=kind,
             prompt="Deploy this release?" if kind is RequestKind.APPROVAL else "What changed?",
             idempotencyKey=uuid4(),
+            phoneNumber=phone_number,
         ),
         request_hash="hash",
         state=RequestState.PENDING,
@@ -54,7 +58,6 @@ def gateway(
         client,
         callback_url="https://service.example/v1/callbacks/acs",
         source_phone_number="+15555550100",
-        target_phone_number="+15555550101",
         cognitive_services_endpoint="https://speech.example",
         locale="en-US",
         voice_name="en-US-AvaMultilingualNeural",
@@ -66,7 +69,7 @@ def gateway(
 
 async def test_create_call_uses_outbound_numbers_callback_and_request_context() -> None:
     adapter, client, _ = gateway()
-    request = human_request()
+    request = human_request(phone_number="+15555550123")
     client.create_call = AsyncMock(
         return_value=CallConnectionProperties(call_connection_id="call-connection-id")
     )
@@ -75,7 +78,7 @@ async def test_create_call_uses_outbound_numbers_callback_and_request_context() 
 
     assert call_id == "call-connection-id"
     args, kwargs = client.create_call.await_args
-    assert args[0].properties["value"] == "+15555550101"
+    assert args[0].properties["value"] == "+15555550123"
     assert args[1] == "https://service.example/v1/callbacks/acs"
     assert kwargs["source_caller_id_number"].properties["value"] == "+15555550100"
     assert kwargs["operation_context"] == str(request.request_id)
@@ -125,13 +128,14 @@ async def test_approval_can_disable_dtmf_fallback() -> None:
 
 async def test_input_starts_one_speech_recognition_without_choices() -> None:
     adapter, _, connection = gateway()
-    request = human_request(RequestKind.INPUT)
+    request = human_request(RequestKind.INPUT, phone_number="+15555550124")
 
     await adapter.start_recognition("call-id", request)
 
     connection.start_recognizing_media.assert_awaited_once()
     args, kwargs = connection.start_recognizing_media.await_args
     assert args[0] is RecognizeInputType.SPEECH
+    assert args[1].properties["value"] == "+15555550124"
     assert kwargs["play_prompt"].text == "What changed?"
     assert "choices" not in kwargs
 

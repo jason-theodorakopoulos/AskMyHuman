@@ -26,11 +26,17 @@ from ask_my_human.persistence.repository import PostgresRequestRepository
 HASH = "a" * 64
 
 
-def request(*, prompt: str = "Deploy?", idempotency_key: UUID | None = None) -> AskHumanRequest:
+def request(
+    *,
+    prompt: str = "Deploy?",
+    idempotency_key: UUID | None = None,
+    phone_number: str = "+15555550101",
+) -> AskHumanRequest:
     return AskHumanRequest(
         kind=RequestKind.APPROVAL,
         prompt=prompt,
         idempotencyKey=idempotency_key or uuid4(),
+        phoneNumber=phone_number,
     )
 
 
@@ -91,6 +97,24 @@ async def test_matching_key_joins_then_replays_and_changed_payload_conflicts(
 
 
 @pytest.mark.asyncio
+async def test_same_key_with_changed_phone_number_conflicts(
+    repository: PostgresRequestRepository,
+) -> None:
+    human_request = request()
+    request_hash = AskHumanService._request_hash(human_request)
+    created_admission, created = await repository.create_or_replay(
+        principal(), human_request, request_hash, expiry()
+    )
+    changed = human_request.model_copy(update={"phone_number": "+15555550102"})
+    conflict_admission, conflict = await repository.create_or_replay(
+        principal(), changed, AskHumanService._request_hash(changed), expiry()
+    )
+    assert created_admission == "created"
+    assert conflict_admission == "conflict"
+    assert conflict.request_id == created.request_id
+
+
+@pytest.mark.asyncio
 async def test_call_attachment_and_concurrent_terminal_update_have_one_winner(
     repository: PostgresRequestRepository,
 ) -> None:
@@ -139,7 +163,10 @@ async def test_persisted_state_is_visible_from_a_new_repository(
     await restarted_pool.open()
     try:
         restarted = PostgresRequestRepository(restarted_pool.pool)
-        assert await restarted.get(created.request_id) == created
+        reloaded = await restarted.get(created.request_id)
+        assert reloaded == created
+        assert reloaded is not None
+        assert reloaded.request.phone_number == "+15555550101"
     finally:
         await restarted_pool.close()
 

@@ -48,7 +48,7 @@ done
 timeout --kill-after=5 30 docker run --detach --pull=never --name "$APPLICATION" --network "container:$DATABASE" \
   -e 'DATABASE_URL=postgresql+psycopg://smoke:smoke%40password%25@127.0.0.1:5432/smoke' \
   -e ACS_ENDPOINT=https://local.communication.azure.com \
-  -e ACS_SOURCE_PHONE_NUMBER=+15555550100 -e MY_MOBILE_NUMBER=+15555550101 \
+  -e ACS_SOURCE_PHONE_NUMBER=+15555550100 \
   -e AZURE_AI_ENDPOINT=https://local.cognitiveservices.azure.com \
   -e ACS_CALLBACK_AUDIENCE=smoke-immutable-resource-id \
   -e ACS_CALLBACK_URL=https://local.example.invalid/v1/callbacks/acs \
@@ -136,7 +136,7 @@ then
 fi
 
 VERSION="$(timeout --kill-after=5 10 docker exec "$DATABASE" psql -U smoke -d smoke -Atc 'select version_num from alembic_version' 2>/dev/null)" || fail 'migration query'
-[[ "$VERSION" == 20260916_0002 ]] || fail 'migration revision mismatch'
+[[ "$VERSION" == 20260917_0003 ]] || fail 'migration revision mismatch'
 ROWS="$(timeout --kill-after=5 10 docker exec "$DATABASE" psql -U smoke -d smoke -Atc 'select count(*) from human_requests' 2>/dev/null)" || fail 'request count query'
 [[ "$ROWS" == 0 ]] || fail 'non-paid smoke unexpectedly created a human request'
 LOGS="$(timeout --kill-after=5 10 docker logs "$APPLICATION" 2>&1)" || fail 'log capture'

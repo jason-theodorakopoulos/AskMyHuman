@@ -9,7 +9,6 @@ def settings(**overrides: object) -> Settings:
         "database_url": "postgresql://localhost:5432/askmyhuman",
         "acs_endpoint": "https://example.communication.azure.com",
         "acs_source_phone_number": "+15555550100",
-        "my_mobile_number": "+15555550101",
         "azure_ai_endpoint": "https://example.cognitiveservices.azure.com",
         "acs_callback_url": "https://askmyhuman.example.com/v1/callbacks/acs",
         "acs_callback_audience": "00000000-0000-4000-8000-000000000001",
@@ -29,25 +28,18 @@ def test_settings_redact_database_url() -> None:
     assert configured.database_url.get_secret_value().endswith("/askmyhuman")
 
 
-def test_settings_redact_phone_numbers() -> None:
+def test_settings_redact_source_phone_number() -> None:
     source = "+15555550100"
-    destination = "+15555550101"
-    configured = settings(
-        acs_source_phone_number=source,
-        my_mobile_number=destination,
-    )
+    configured = settings(acs_source_phone_number=source)
     representation = repr(configured)
     assert source not in representation
-    assert destination not in representation
     assert configured.acs_source_phone_number.get_secret_value() == source
-    assert configured.my_mobile_number.get_secret_value() == destination
 
 
-@pytest.mark.parametrize("field", ["acs_source_phone_number", "my_mobile_number"])
-def test_settings_require_e164_numbers(field: str) -> None:
+def test_settings_require_e164_source_number() -> None:
     invalid_phone = "555-555-0100"
     with pytest.raises(ValidationError) as exc_info:
-        settings(**{field: invalid_phone})
+        settings(acs_source_phone_number=invalid_phone)
     assert invalid_phone not in str(exc_info.value)
 
 
@@ -84,7 +76,6 @@ def test_settings_parse_comma_separated_allow_lists_from_the_environment(
         "DATABASE_URL": "postgresql://localhost:5432/askmyhuman",
         "ACS_ENDPOINT": "https://example.communication.azure.com",
         "ACS_SOURCE_PHONE_NUMBER": "+15555550100",
-        "MY_MOBILE_NUMBER": "+15555550101",
         "AZURE_AI_ENDPOINT": "https://example.cognitiveservices.azure.com",
         "ACS_CALLBACK_URL": "https://askmyhuman.example.com/v1/callbacks/acs",
         "ACS_CALLBACK_AUDIENCE": "00000000-0000-4000-8000-000000000001",

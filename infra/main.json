@@ -4,8 +4,8 @@
   "metadata": {
     "_generator": {
       "name": "bicep",
-      "version": "0.46.1.21595",
-      "templateHash": "1754873526871152555"
+      "version": "0.47.16.16243",
+      "templateHash": "15390903241196562339"
     }
   },
   "parameters": {
@@ -19,6 +19,18 @@
       "type": "string",
       "metadata": {
         "description": "Content-addressed Container App image reference."
+      }
+    },
+    "containerAppName": {
+      "type": "string",
+      "metadata": {
+        "description": "Explicit Container App target approved for this release."
+      }
+    },
+    "revisionSuffix": {
+      "type": "string",
+      "metadata": {
+        "description": "Revision suffix bound to the reviewed image and source."
       }
     },
     "containerRegistryServer": {
@@ -37,12 +49,6 @@
       "type": "securestring",
       "metadata": {
         "description": "PostgreSQL administrator password."
-      }
-    },
-    "myMobileNumber": {
-      "type": "securestring",
-      "metadata": {
-        "description": "The sole destination phone number in E.164 format."
       }
     },
     "acsSourcePhoneNumber": {
@@ -83,14 +89,35 @@
     },
     "acsCallbackAudience": {
       "type": "string",
+      "minLength": 1,
       "metadata": {
-        "description": "Public HTTPS service URL used as the ACS callback audience."
+        "description": "Verified ACS properties.immutableResourceId expected as the callback JWT audience, not an ARM ID or URL."
+      }
+    },
+    "acsCallbackUrl": {
+      "type": "string",
+      "metadata": {
+        "description": "Full public HTTPS callback endpoint, including /v1/callbacks/acs."
       }
     },
     "mcpAllowedHosts": {
       "type": "string",
       "metadata": {
         "description": "Comma-separated public hosts accepted by the MCP transport."
+      }
+    },
+    "provisionLiveDatabase": {
+      "type": "bool",
+      "defaultValue": false,
+      "metadata": {
+        "description": "Provision the isolated database used only by gated live validation."
+      }
+    },
+    "useLiveDatabase": {
+      "type": "bool",
+      "defaultValue": false,
+      "metadata": {
+        "description": "Bind this revision to the isolated live database."
       }
     }
   },
@@ -121,8 +148,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.46.1.21595",
-              "templateHash": "14923516212714145242"
+              "version": "0.47.16.16243",
+              "templateHash": "8732332014895488012"
             }
           },
           "parameters": {
@@ -190,8 +217,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.46.1.21595",
-              "templateHash": "11851322607651865047"
+              "version": "0.47.16.16243",
+              "templateHash": "17867937959805228366"
             }
           },
           "parameters": {
@@ -218,6 +245,20 @@
               }
             }
           },
+          "variables": {
+            "applicationTables": [
+              "AppAvailabilityResults",
+              "AppBrowserTimings",
+              "AppDependencies",
+              "AppEvents",
+              "AppExceptions",
+              "AppMetrics",
+              "AppPageViews",
+              "AppPerformanceCounters",
+              "AppRequests",
+              "AppTraces"
+            ]
+          },
           "resources": [
             {
               "type": "Microsoft.OperationalInsights/workspaces",
@@ -228,6 +269,9 @@
                 "publicNetworkAccessForIngestion": "Enabled",
                 "publicNetworkAccessForQuery": "Enabled",
                 "retentionInDays": "[parameters('retentionDays')]",
+                "features": {
+                  "immediatePurgeDataOn30Days": true
+                },
                 "sku": {
                   "name": "PerGB2018"
                 }
@@ -248,6 +292,23 @@
                 "WorkspaceResourceId": "[resourceId('Microsoft.OperationalInsights/workspaces', format('{0}-logs', parameters('resourceNamePrefix')))]"
               },
               "dependsOn": [
+                "[resourceId('Microsoft.OperationalInsights/workspaces', format('{0}-logs', parameters('resourceNamePrefix')))]"
+              ]
+            },
+            {
+              "copy": {
+                "name": "applicationTableRetention",
+                "count": "[length(variables('applicationTables'))]"
+              },
+              "type": "Microsoft.OperationalInsights/workspaces/tables",
+              "apiVersion": "2023-09-01",
+              "name": "[format('{0}/{1}', format('{0}-logs', parameters('resourceNamePrefix')), variables('applicationTables')[copyIndex()])]",
+              "properties": {
+                "retentionInDays": "[parameters('retentionDays')]",
+                "totalRetentionInDays": "[parameters('retentionDays')]"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Insights/components', format('{0}-insights', parameters('resourceNamePrefix')))]",
                 "[resourceId('Microsoft.OperationalInsights/workspaces', format('{0}-logs', parameters('resourceNamePrefix')))]"
               ]
             }
@@ -291,6 +352,12 @@
           "databaseName": {
             "value": "askmyhuman"
           },
+          "provisionLiveDatabase": {
+            "value": "[parameters('provisionLiveDatabase')]"
+          },
+          "useLiveDatabase": {
+            "value": "[parameters('useLiveDatabase')]"
+          },
           "serverVersion": {
             "value": "16"
           }
@@ -301,8 +368,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.46.1.21595",
-              "templateHash": "18169851748081612530"
+              "version": "0.47.16.16243",
+              "templateHash": "14772743840194079759"
             }
           },
           "parameters": {
@@ -330,6 +397,20 @@
                 "description": "Application database name."
               }
             },
+            "provisionLiveDatabase": {
+              "type": "bool",
+              "defaultValue": false,
+              "metadata": {
+                "description": "Provision a dedicated database for destructive live validation."
+              }
+            },
+            "useLiveDatabase": {
+              "type": "bool",
+              "defaultValue": false,
+              "metadata": {
+                "description": "Bind the application output to the dedicated live database."
+              }
+            },
             "serverVersion": {
               "type": "string",
               "allowedValues": [
@@ -341,6 +422,7 @@
             }
           },
           "variables": {
+            "liveDatabaseName": "[format('{0}_live', parameters('databaseName'))]",
             "serverName": "[toLower(format('{0}-postgres-{1}', parameters('resourceNamePrefix'), uniqueString(resourceGroup().id)))]",
             "administratorLogin": "askmyhumanadmin"
           },
@@ -424,6 +506,19 @@
               "dependsOn": [
                 "[resourceId('Microsoft.DBforPostgreSQL/flexibleServers', variables('serverName'))]"
               ]
+            },
+            {
+              "condition": "[or(parameters('provisionLiveDatabase'), parameters('useLiveDatabase'))]",
+              "type": "Microsoft.DBforPostgreSQL/flexibleServers/databases",
+              "apiVersion": "2024-08-01",
+              "name": "[format('{0}/{1}', variables('serverName'), variables('liveDatabaseName'))]",
+              "properties": {
+                "charset": "UTF8",
+                "collation": "en_US.utf8"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.DBforPostgreSQL/flexibleServers', variables('serverName'))]"
+              ]
             }
           ],
           "outputs": {
@@ -437,7 +532,11 @@
             },
             "databaseName": {
               "type": "string",
-              "value": "[parameters('databaseName')]"
+              "value": "[if(parameters('useLiveDatabase'), variables('liveDatabaseName'), parameters('databaseName'))]"
+            },
+            "liveDatabaseName": {
+              "type": "string",
+              "value": "[variables('liveDatabaseName')]"
             }
           }
         }
@@ -464,6 +563,12 @@
           },
           "containerIdentityPrincipalId": {
             "value": "[reference(resourceId('Microsoft.Resources/deployments', 'askmyhuman-identity'), '2025-04-01').outputs.principalId.value]"
+          },
+          "containerIdentityResourceId": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'askmyhuman-identity'), '2025-04-01').outputs.identityResourceId.value]"
+          },
+          "logAnalyticsWorkspaceId": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'askmyhuman-observability'), '2025-04-01').outputs.logAnalyticsWorkspaceId.value]"
           }
         },
         "template": {
@@ -472,8 +577,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.46.1.21595",
-              "templateHash": "7923559361513295282"
+              "version": "0.47.16.16243",
+              "templateHash": "1756780989668111390"
             }
           },
           "parameters": {
@@ -499,6 +604,18 @@
               "type": "string",
               "metadata": {
                 "description": "Principal ID of the Container App user-assigned managed identity."
+              }
+            },
+            "containerIdentityResourceId": {
+              "type": "string",
+              "metadata": {
+                "description": "Resource ID of the Container App user-assigned managed identity."
+              }
+            },
+            "logAnalyticsWorkspaceId": {
+              "type": "string",
+              "metadata": {
+                "description": "Resource ID of the Log Analytics workspace for provider call evidence."
               }
             }
           },
@@ -556,6 +673,9 @@
                   },
                   "containerIdentityPrincipalId": {
                     "value": "[parameters('containerIdentityPrincipalId')]"
+                  },
+                  "containerIdentityResourceId": {
+                    "value": "[parameters('containerIdentityResourceId')]"
                   }
                 },
                 "template": {
@@ -564,8 +684,8 @@
                   "metadata": {
                     "_generator": {
                       "name": "bicep",
-                      "version": "0.46.1.21595",
-                      "templateHash": "551450120243786359"
+                      "version": "0.47.16.16243",
+                      "templateHash": "11020637568394521927"
                     }
                   },
                   "parameters": {
@@ -580,21 +700,99 @@
                       "metadata": {
                         "description": "Principal ID of the Container App user-assigned managed identity."
                       }
+                    },
+                    "containerIdentityResourceId": {
+                      "type": "string",
+                      "metadata": {
+                        "description": "Resource ID of the managed identity; names the assignment without a runtime reference."
+                      }
                     }
                   },
                   "variables": {
-                    "azureCommunicationServicesDataOwnerRoleId": "0d8b7e87-0907-4e9d-a49d-ad2166c4bf2e"
+                    "communicationAndEmailServiceOwnerRoleId": "09976791-48a7-449e-bb21-39d1a415f350"
                   },
                   "resources": [
                     {
                       "type": "Microsoft.Authorization/roleAssignments",
                       "apiVersion": "2022-04-01",
                       "scope": "[resourceId('Microsoft.Communication/communicationServices', parameters('acsResourceName'))]",
-                      "name": "[guid(resourceId('Microsoft.Communication/communicationServices', parameters('acsResourceName')), parameters('containerIdentityPrincipalId'), variables('azureCommunicationServicesDataOwnerRoleId'))]",
+                      "name": "[guid(resourceId('Microsoft.Communication/communicationServices', parameters('acsResourceName')), parameters('containerIdentityResourceId'), variables('communicationAndEmailServiceOwnerRoleId'))]",
                       "properties": {
                         "principalId": "[parameters('containerIdentityPrincipalId')]",
                         "principalType": "ServicePrincipal",
-                        "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('azureCommunicationServicesDataOwnerRoleId'))]"
+                        "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('communicationAndEmailServiceOwnerRoleId'))]"
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "type": "Microsoft.Resources/deployments",
+              "apiVersion": "2025-04-01",
+              "name": "communications-acs-diagnostics",
+              "subscriptionId": "[variables('acsSubscriptionId')]",
+              "resourceGroup": "[variables('acsResourceGroupName')]",
+              "properties": {
+                "expressionEvaluationOptions": {
+                  "scope": "inner"
+                },
+                "mode": "Incremental",
+                "parameters": {
+                  "acsResourceName": {
+                    "value": "[variables('acsResourceName')]"
+                  },
+                  "logAnalyticsWorkspaceId": {
+                    "value": "[parameters('logAnalyticsWorkspaceId')]"
+                  }
+                },
+                "template": {
+                  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+                  "contentVersion": "1.0.0.0",
+                  "metadata": {
+                    "_generator": {
+                      "name": "bicep",
+                      "version": "0.47.16.16243",
+                      "templateHash": "41412073149973037"
+                    }
+                  },
+                  "parameters": {
+                    "acsResourceName": {
+                      "type": "string",
+                      "metadata": {
+                        "description": "Name of the existing ACS resource."
+                      }
+                    },
+                    "logAnalyticsWorkspaceId": {
+                      "type": "string",
+                      "metadata": {
+                        "description": "Resource ID of the Log Analytics workspace for provider call evidence."
+                      }
+                    }
+                  },
+                  "resources": [
+                    {
+                      "type": "Microsoft.Insights/diagnosticSettings",
+                      "apiVersion": "2021-05-01-preview",
+                      "scope": "[resourceId('Microsoft.Communication/communicationServices', parameters('acsResourceName'))]",
+                      "name": "askmyhuman-call-evidence",
+                      "properties": {
+                        "workspaceId": "[parameters('logAnalyticsWorkspaceId')]",
+                        "logAnalyticsDestinationType": "Dedicated",
+                        "logs": [
+                          {
+                            "category": "CallAutomationOperational",
+                            "enabled": true
+                          },
+                          {
+                            "category": "CallSummary",
+                            "enabled": true
+                          },
+                          {
+                            "category": "CallDiagnostics",
+                            "enabled": true
+                          }
+                        ]
                       }
                     }
                   ]
@@ -623,7 +821,8 @@
         }
       },
       "dependsOn": [
-        "[resourceId('Microsoft.Resources/deployments', 'askmyhuman-identity')]"
+        "[resourceId('Microsoft.Resources/deployments', 'askmyhuman-identity')]",
+        "[resourceId('Microsoft.Resources/deployments', 'askmyhuman-observability')]"
       ]
     },
     {
@@ -644,6 +843,12 @@
           },
           "containerImage": {
             "value": "[parameters('containerImage')]"
+          },
+          "containerAppName": {
+            "value": "[parameters('containerAppName')]"
+          },
+          "revisionSuffix": {
+            "value": "[parameters('revisionSuffix')]"
           },
           "containerRegistryServer": {
             "value": "[parameters('containerRegistryServer')]"
@@ -681,9 +886,6 @@
           "acsSourcePhoneNumber": {
             "value": "[parameters('acsSourcePhoneNumber')]"
           },
-          "myMobileNumber": {
-            "value": "[parameters('myMobileNumber')]"
-          },
           "entraTenantId": {
             "value": "[parameters('entraTenantId')]"
           },
@@ -698,6 +900,9 @@
           },
           "acsCallbackAudience": {
             "value": "[parameters('acsCallbackAudience')]"
+          },
+          "acsCallbackUrl": {
+            "value": "[parameters('acsCallbackUrl')]"
           },
           "mcpAllowedHosts": {
             "value": "[parameters('mcpAllowedHosts')]"
@@ -727,8 +932,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.46.1.21595",
-              "templateHash": "3787202492907848701"
+              "version": "0.47.16.16243",
+              "templateHash": "4355187295147986330"
             }
           },
           "parameters": {
@@ -748,6 +953,18 @@
               "type": "string",
               "metadata": {
                 "description": "Content-addressed Container App image reference."
+              }
+            },
+            "containerAppName": {
+              "type": "string",
+              "metadata": {
+                "description": "Explicit Container App target approved for this release."
+              }
+            },
+            "revisionSuffix": {
+              "type": "string",
+              "metadata": {
+                "description": "Revision suffix bound to the reviewed image and source."
               }
             },
             "containerRegistryServer": {
@@ -822,12 +1039,6 @@
                 "description": "ACS source phone number in E.164 format."
               }
             },
-            "myMobileNumber": {
-              "type": "securestring",
-              "metadata": {
-                "description": "The sole destination phone number in E.164 format."
-              }
-            },
             "entraTenantId": {
               "type": "string",
               "metadata": {
@@ -854,8 +1065,15 @@
             },
             "acsCallbackAudience": {
               "type": "string",
+              "minLength": 1,
               "metadata": {
                 "description": "Audience expected on ACS callback bearer tokens."
+              }
+            },
+            "acsCallbackUrl": {
+              "type": "string",
+              "metadata": {
+                "description": "Full public HTTPS callback endpoint, including /v1/callbacks/acs."
               }
             },
             "mcpAllowedHosts": {
@@ -903,7 +1121,6 @@
           },
           "variables": {
             "containerAppsEnvironmentName": "[format('{0}-environment', parameters('resourceNamePrefix'))]",
-            "containerAppName": "[format('{0}-app', parameters('resourceNamePrefix'))]",
             "postgresAdministratorLogin": "askmyhumanadmin",
             "registryResourceIdSegments": "[split(parameters('containerRegistryResourceId'), '/')]",
             "registrySubscriptionId": "[variables('registryResourceIdSegments')[2]]",
@@ -930,7 +1147,7 @@
             {
               "type": "Microsoft.App/containerApps",
               "apiVersion": "2024-03-01",
-              "name": "[variables('containerAppName')]",
+              "name": "[parameters('containerAppName')]",
               "location": "[parameters('location')]",
               "identity": {
                 "type": "UserAssigned",
@@ -974,16 +1191,13 @@
                       "value": "[parameters('acsSourcePhoneNumber')]"
                     },
                     {
-                      "name": "my-mobile-number",
-                      "value": "[parameters('myMobileNumber')]"
-                    },
-                    {
                       "name": "entra-client-secret",
                       "value": "[parameters('entraClientSecret')]"
                     }
                   ]
                 },
                 "template": {
+                  "revisionSuffix": "[parameters('revisionSuffix')]",
                   "containers": [
                     {
                       "name": "ask-my-human",
@@ -1010,16 +1224,16 @@
                           "secretRef": "acs-source-phone-number"
                         },
                         {
-                          "name": "MY_MOBILE_NUMBER",
-                          "secretRef": "my-mobile-number"
-                        },
-                        {
                           "name": "AZURE_AI_ENDPOINT",
                           "value": "[parameters('azureAiEndpoint')]"
                         },
                         {
                           "name": "ACS_CALLBACK_AUDIENCE",
                           "value": "[parameters('acsCallbackAudience')]"
+                        },
+                        {
+                          "name": "ACS_CALLBACK_URL",
+                          "value": "[parameters('acsCallbackUrl')]"
                         },
                         {
                           "name": "ENTRA_TENANT_ID",
@@ -1103,17 +1317,20 @@
               },
               "dependsOn": [
                 "[resourceId('Microsoft.App/managedEnvironments', variables('containerAppsEnvironmentName'))]",
-                "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', variables('registrySubscriptionId'), variables('registryResourceGroupName')), 'Microsoft.Resources/deployments', format('{0}-acr-pull', variables('containerAppName')))]"
+                "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', variables('registrySubscriptionId'), variables('registryResourceGroupName')), 'Microsoft.Resources/deployments', format('{0}-acr-pull', parameters('containerAppName')))]"
               ]
             },
             {
               "type": "Microsoft.App/containerApps/authConfigs",
               "apiVersion": "2024-03-01",
-              "name": "[format('{0}/{1}', variables('containerAppName'), 'current')]",
+              "name": "[format('{0}/{1}', parameters('containerAppName'), 'current')]",
               "properties": {
                 "globalValidation": {
                   "excludedPaths": [
-                    "/v1/callbacks/acs"
+                    "/v1/callbacks/acs",
+                    "/v1/requests",
+                    "/mcp",
+                    "/mcp/*"
                   ],
                   "unauthenticatedClientAction": "Return401"
                 },
@@ -1147,13 +1364,13 @@
                 }
               },
               "dependsOn": [
-                "[resourceId('Microsoft.App/containerApps', variables('containerAppName'))]"
+                "[resourceId('Microsoft.App/containerApps', parameters('containerAppName'))]"
               ]
             },
             {
               "type": "Microsoft.Resources/deployments",
               "apiVersion": "2025-04-01",
-              "name": "[format('{0}-acr-pull', variables('containerAppName'))]",
+              "name": "[format('{0}-acr-pull', parameters('containerAppName'))]",
               "subscriptionId": "[variables('registrySubscriptionId')]",
               "resourceGroup": "[variables('registryResourceGroupName')]",
               "properties": {
@@ -1167,6 +1384,9 @@
                   },
                   "principalId": {
                     "value": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', last(split(parameters('identityResourceId'), '/'))), '2023-01-31').principalId]"
+                  },
+                  "principalResourceId": {
+                    "value": "[parameters('identityResourceId')]"
                   }
                 },
                 "template": {
@@ -1175,8 +1395,8 @@
                   "metadata": {
                     "_generator": {
                       "name": "bicep",
-                      "version": "0.46.1.21595",
-                      "templateHash": "13765267058693794261"
+                      "version": "0.47.16.16243",
+                      "templateHash": "1709604114950143432"
                     }
                   },
                   "parameters": {
@@ -1191,6 +1411,12 @@
                       "metadata": {
                         "description": "Managed identity principal ID granted pull access."
                       }
+                    },
+                    "principalResourceId": {
+                      "type": "string",
+                      "metadata": {
+                        "description": "Resource ID of the managed identity; names the assignment without a runtime reference."
+                      }
                     }
                   },
                   "variables": {
@@ -1201,7 +1427,7 @@
                       "type": "Microsoft.Authorization/roleAssignments",
                       "apiVersion": "2022-04-01",
                       "scope": "[resourceId('Microsoft.ContainerRegistry/registries', parameters('containerRegistryName'))]",
-                      "name": "[guid(resourceId('Microsoft.ContainerRegistry/registries', parameters('containerRegistryName')), parameters('principalId'), variables('acrPullRoleDefinitionId'))]",
+                      "name": "[guid(resourceId('Microsoft.ContainerRegistry/registries', parameters('containerRegistryName')), parameters('principalResourceId'), variables('acrPullRoleDefinitionId'))]",
                       "properties": {
                         "principalId": "[parameters('principalId')]",
                         "principalType": "ServicePrincipal",
@@ -1216,15 +1442,15 @@
           "outputs": {
             "containerAppName": {
               "type": "string",
-              "value": "[variables('containerAppName')]"
+              "value": "[parameters('containerAppName')]"
             },
             "containerAppResourceId": {
               "type": "string",
-              "value": "[resourceId('Microsoft.App/containerApps', variables('containerAppName'))]"
+              "value": "[resourceId('Microsoft.App/containerApps', parameters('containerAppName'))]"
             },
             "fqdn": {
               "type": "string",
-              "value": "[reference(resourceId('Microsoft.App/containerApps', variables('containerAppName')), '2024-03-01').configuration.ingress.fqdn]"
+              "value": "[reference(resourceId('Microsoft.App/containerApps', parameters('containerAppName')), '2024-03-01').configuration.ingress.fqdn]"
             }
           }
         }
@@ -1253,6 +1479,14 @@
     "fqdn": {
       "type": "string",
       "value": "[reference(resourceId('Microsoft.Resources/deployments', 'askmyhuman-container-app'), '2025-04-01').outputs.fqdn.value]"
+    },
+    "activeDatabaseName": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'askmyhuman-postgresql'), '2025-04-01').outputs.databaseName.value]"
+    },
+    "liveDatabaseName": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'askmyhuman-postgresql'), '2025-04-01').outputs.liveDatabaseName.value]"
     }
   }
 }

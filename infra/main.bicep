@@ -16,9 +16,6 @@ param containerRegistryResourceId string
 @description('PostgreSQL administrator password.')
 param postgresAdminPassword string
 @secure()
-@description('The sole destination phone number in E.164 format.')
-param myMobileNumber string
-@secure()
 @description('ACS source phone number in E.164 format.')
 param acsSourcePhoneNumber string
 @description('Microsoft Entra tenant ID.')
@@ -108,7 +105,6 @@ module containerApp 'modules/container-app.bicep' = {
 		acsEndpoint: communications.outputs.acsEndpoint
 		azureAiEndpoint: communications.outputs.azureAiEndpoint
 		acsSourcePhoneNumber: acsSourcePhoneNumber
-		myMobileNumber: myMobileNumber
 		entraTenantId: entraTenantId
 		entraClientId: entraClientId
 		entraClientSecret: entraClientSecret

@@ -13,7 +13,6 @@ def settings() -> Settings:
             "database_url": "postgresql://localhost:5432/askmyhuman",
             "acs_endpoint": "https://example.communication.azure.com",
             "acs_source_phone_number": "+15555550100",
-            "my_mobile_number": "+15555550101",
             "azure_ai_endpoint": "https://example.cognitiveservices.azure.com",
             "acs_callback_audience": "https://askmyhuman.example.com",
             "entra_tenant_id": "tenant",

@@ -350,7 +350,12 @@ def _stored() -> HumanRequest:
     return HumanRequest(
         request_id=result.request_id,
         principal=Principal("dummy-agent", "dummy-app"),
-        request=AskHumanRequest(kind="approval", prompt="dummy", idempotencyKey=uuid4()),
+        request=AskHumanRequest(
+            kind="approval",
+            prompt="dummy",
+            idempotencyKey=uuid4(),
+            phoneNumber="+15555550101",
+        ),
         request_hash="0" * 64,
         state=RequestState.RESPONDED,
         created_at=now,

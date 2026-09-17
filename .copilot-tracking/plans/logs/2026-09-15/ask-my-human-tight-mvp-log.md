@@ -336,3 +336,17 @@ revision state, diagnostic routing, and telemetry retention checks all passed.
   call correlation, and two accepted callbacks. The strict snapshot SHA-256 is
   `fe3525ce9942d12efd847feef71bc75922f0543deff318a0c99866b4bf5502a4`;
   authorized exact-byte review remains open.
+
+## Phase 7 Contract Decision: 2026-09-17
+
+### Implementation Deviations
+
+* DD-20: The human phone number moves from deployment configuration to each
+  authenticated invocation.
+  * Previous contract: `MY_MOBILE_NUMBER` selected one fixed human for every call.
+  * Revised contract: A required E.164 `phoneNumber` is persisted with the request
+    and used for both ACS call creation and callback-driven recognition.
+  * Rationale: The user requires MCP callers to select the human destination. Durable
+    storage is necessary because recognition may run after process replacement.
+  * Security constraint: Phone numbers remain content data and must not enter logs,
+    telemetry, deployment output, or error details.

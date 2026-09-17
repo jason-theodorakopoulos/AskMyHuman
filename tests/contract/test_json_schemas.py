@@ -25,7 +25,10 @@ def validate(filename: str, instance: Mapping[str, object]) -> None:
 
 def test_request_schema_validates_normalized_approval() -> None:
     request = AskHumanRequest(
-        kind=RequestKind.APPROVAL, prompt="  Deploy now?  ", idempotencyKey=uuid4()
+        kind=RequestKind.APPROVAL,
+        prompt="  Deploy now?  ",
+        idempotencyKey=uuid4(),
+        phoneNumber="+15555550101",
     )
     payload = request.model_dump(by_alias=True, mode="json")
     assert payload["prompt"] == "Deploy now?"
@@ -103,7 +106,12 @@ def test_request_schema_rejects_whitespace_only_prompt() -> None:
     with pytest.raises(jsonschema.ValidationError):
         validate(
             "ask-human-request.schema.json",
-            {"kind": "input", "prompt": "   ", "idempotencyKey": str(uuid4())},
+            {
+                "kind": "input",
+                "prompt": "   ",
+                "idempotencyKey": str(uuid4()),
+                "phoneNumber": "+15555550101",
+            },
         )
 
 
@@ -112,6 +120,7 @@ def test_request_model_and_schema_reject_same_overlong_wire_prompt() -> None:
         "kind": "input",
         "prompt": f" {'x' * 2000} ",
         "idempotencyKey": str(uuid4()),
+        "phoneNumber": "+15555550101",
     }
     with pytest.raises(ValueError, match="2000"):
         AskHumanRequest.model_validate(payload)
@@ -121,4 +130,42 @@ def test_request_model_and_schema_reject_same_overlong_wire_prompt() -> None:
 
 def test_unknown_request_field_is_rejected() -> None:
     with pytest.raises(ValueError):
-        AskHumanRequest(kind="input", prompt="Need context", idempotencyKey=uuid4(), extra=True)  # type: ignore[call-arg]
+        AskHumanRequest(
+            kind="input",
+            prompt="Need context",
+            idempotencyKey=uuid4(),
+            phoneNumber="+15555550101",
+            extra=True,  # type: ignore[call-arg]
+        )
+
+
+@pytest.mark.parametrize("phone_number", ["+12", "+15555550101", "+123456789012345"])
+def test_request_model_and_schema_accept_e164_phone_number(phone_number: str) -> None:
+    payload = {
+        "kind": "input",
+        "prompt": "Need context",
+        "idempotencyKey": str(uuid4()),
+        "phoneNumber": phone_number,
+    }
+    request = AskHumanRequest.model_validate(payload)
+    assert request.phone_number == phone_number
+    validate("ask-human-request.schema.json", request.model_dump(by_alias=True, mode="json"))
+
+
+@pytest.mark.parametrize(
+    "phone_number",
+    [None, 15555550101, "", " ", "15555550101", "+012", "+1", "+1234567890123456"],
+)
+def test_request_model_and_schema_reject_invalid_phone_number(phone_number: object) -> None:
+    payload = {
+        "kind": "input",
+        "prompt": "Need context",
+        "idempotencyKey": str(uuid4()),
+        "phoneNumber": phone_number,
+    }
+    with pytest.raises(ValueError) as error:
+        AskHumanRequest.model_validate(payload)
+    assert "input_value" not in str(error.value)
+    assert "input_type" not in str(error.value)
+    with pytest.raises(jsonschema.ValidationError):
+        validate("ask-human-request.schema.json", payload)
