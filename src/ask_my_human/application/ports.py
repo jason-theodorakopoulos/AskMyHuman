@@ -121,6 +121,9 @@ class Telemetry(Protocol):
         *,
         request_id: UUID,
         kind: RequestKind | None = None,
+        call_id: str | None = None,
+        event_id: str | None = None,
+        pending_join: bool | None = None,
     ) -> AbstractContextManager[object]: ...
 
     def dependency_failed(

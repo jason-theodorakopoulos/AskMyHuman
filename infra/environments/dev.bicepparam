@@ -17,3 +17,5 @@ param existingAcsResourceId = readEnvironmentVariable('EXISTING_ACS_RESOURCE_ID'
 param acsCallbackAudience = readEnvironmentVariable('ACS_CALLBACK_AUDIENCE')
 param acsCallbackUrl = readEnvironmentVariable('ACS_CALLBACK_URL')
 param mcpAllowedHosts = readEnvironmentVariable('MCP_ALLOWED_HOSTS')
+param provisionLiveDatabase = bool(readEnvironmentVariable('PROVISION_LIVE_DATABASE'))
+param useLiveDatabase = bool(readEnvironmentVariable('USE_LIVE_DATABASE'))

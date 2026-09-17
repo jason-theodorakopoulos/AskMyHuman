@@ -15,6 +15,9 @@ param containerIdentityPrincipalId string
 @description('Resource ID of the Container App user-assigned managed identity.')
 param containerIdentityResourceId string
 
+@description('Resource ID of the Log Analytics workspace receiving ACS diagnostics.')
+param logAnalyticsWorkspaceId string
+
 var acsResourceIdSegments = split(existingAcsResourceId, '/')
 var acsSubscriptionId = acsResourceIdSegments[2]
 var acsResourceGroupName = acsResourceIdSegments[4]
@@ -25,6 +28,15 @@ var cognitiveServicesUserRoleId = 'a97b65f3-24c7-4388-baec-2e87135dc908'
 resource acs 'Microsoft.Communication/communicationServices@2023-04-01' existing = {
   name: acsResourceName
   scope: resourceGroup(acsSubscriptionId, acsResourceGroupName)
+}
+
+module acsDiagnostics 'communications-diagnostics.bicep' = {
+  name: 'communications-diagnostics'
+  scope: resourceGroup(acsSubscriptionId, acsResourceGroupName)
+  params: {
+    acsResourceName: acsResourceName
+    logAnalyticsWorkspaceId: logAnalyticsWorkspaceId
+  }
 }
 
 resource azureAi 'Microsoft.CognitiveServices/accounts@2024-10-01' = {

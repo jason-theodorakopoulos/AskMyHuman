@@ -9,11 +9,17 @@ param resourceNamePrefix string
 param administratorPassword string
 @description('Application database name.')
 param databaseName string
+@description('Provision a dedicated database for destructive live validation.')
+param provisionLiveDatabase bool = false
+@description('Bind the application output to the dedicated live database.')
+param useLiveDatabase bool = false
 @allowed([
   '16'
 ])
 @description('PostgreSQL major server version.')
 param serverVersion string
+
+var liveDatabaseName = '${databaseName}_live'
 
 var serverName = toLower('${resourceNamePrefix}-postgres-${uniqueString(resourceGroup().id)}')
 var administratorLogin = 'askmyhumanadmin'
@@ -85,6 +91,16 @@ resource applicationDatabase 'Microsoft.DBforPostgreSQL/flexibleServers/database
   }
 }
 
+resource liveDatabase 'Microsoft.DBforPostgreSQL/flexibleServers/databases@2024-08-01' = if (provisionLiveDatabase || useLiveDatabase) {
+  parent: server
+  name: liveDatabaseName
+  properties: {
+    charset: 'UTF8'
+    collation: 'en_US.utf8'
+  }
+}
+
 output serverResourceId string = server.id
 output databaseHost string = server.properties.fullyQualifiedDomainName
-output databaseName string = applicationDatabase.name
+output databaseName string = useLiveDatabase ? liveDatabaseName : applicationDatabase.name
+output liveDatabaseName string = liveDatabaseName

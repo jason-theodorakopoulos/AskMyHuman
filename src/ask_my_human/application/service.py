@@ -125,6 +125,14 @@ class AskHumanService:
         if admission in {"created", "joined_pending"}:
             self._telemetry.set_pending(True)
 
+        if admission == "joined_pending":
+            with self._telemetry.span(
+                TelemetryOperation.ASK,
+                request_id=stored.request_id,
+                pending_join=True,
+            ):
+                pass
+
         if admission == "conflict":
             raise AskMyHumanError(
                 ErrorCode.IDEMPOTENCY_CONFLICT,
@@ -254,7 +262,12 @@ class AskHumanService:
             raise self._dependency_error(stored.request_id) from None
 
     async def handle_call_event(self, event: CallEvent) -> None:
-        with self._telemetry.span(TelemetryOperation.CALLBACK, request_id=event.request_id):
+        with self._telemetry.span(
+            TelemetryOperation.CALLBACK,
+            request_id=event.request_id,
+            call_id=event.call_id,
+            event_id=event.event_id,
+        ):
             try:
                 async with asyncio.timeout(self._cleanup_seconds):
                     stored = await self._dependency(
@@ -386,6 +399,12 @@ class AskHumanService:
                 self._gateway.create_call(stored),
                 stored.request_id,
             )
+            with self._telemetry.span(
+                TelemetryOperation.CREATE_CALL,
+                request_id=stored.request_id,
+                call_id=call_id,
+            ):
+                pass
             self._call_ids[stored.request_id] = call_id
             attached = await self._dependency(
                 TelemetryOperation.REPOSITORY,

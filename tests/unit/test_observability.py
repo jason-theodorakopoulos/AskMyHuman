@@ -154,6 +154,27 @@ def test_dependency_failure_and_pending_gauge_use_only_approved_dimensions(
     assert "error_code" in capture
 
 
+def test_callback_span_contains_only_opaque_delivery_correlation(
+    captured_telemetry: tuple[AzureMonitorTelemetry, CapturingSpanExporter, InMemoryMetricReader],
+) -> None:
+    telemetry, exporter, _ = captured_telemetry
+    request_id = uuid4()
+
+    with telemetry.span(
+        TelemetryOperation.CALLBACK,
+        request_id=request_id,
+        call_id="opaque-call-id",
+        event_id="opaque-event-id",
+    ):
+        pass
+
+    assert exporter.spans[0].attributes == {
+        "request_id": str(request_id),
+        "call_id": "opaque-call-id",
+        "event_id": "opaque-event-id",
+    }
+
+
 def test_sensitive_values_never_enter_spans_metrics_or_exception_telemetry(
     captured_telemetry: tuple[AzureMonitorTelemetry, CapturingSpanExporter, InMemoryMetricReader],
 ) -> None:

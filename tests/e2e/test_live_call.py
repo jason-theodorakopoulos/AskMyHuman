@@ -119,6 +119,9 @@ class _PendingJoin(_EvidenceModel):
 
 class _ProviderEvidence(_EvidenceModel):
     source: Literal["acs-provider", "acs-http-dependency"]
+    attempt_source: Literal["acs-provider"] = "acs-provider"
+    delivery_source: Literal["content-free-app-telemetry"] = "content-free-app-telemetry"
+    pending_join_source: Literal["content-free-app-telemetry"] = "content-free-app-telemetry"
     record: str = Field(min_length=1)
     revision: str
     window_start: datetime

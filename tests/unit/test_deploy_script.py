@@ -180,6 +180,8 @@ def deployment(tmp_path: Path) -> Deployment:
         "ACS_CALLBACK_AUDIENCE": "verified-immutable-resource-id",
         "ACS_CALLBACK_URL": "https://app.invalid/v1/callbacks/acs",
         "MCP_ALLOWED_HOSTS": "app.invalid",
+        "PROVISION_LIVE_DATABASE": "false",
+        "USE_LIVE_DATABASE": "false",
         "SERVICE_URL": "https://app.invalid",
         "HEALTH_BEARER_TOKEN": "dummy-health-token",
         "EXPECTED_REVISION": REVISION,
@@ -454,6 +456,24 @@ def test_changed_parameters_and_what_if_require_new_approval(deployment: Deploym
     deployment.env["STUB_WHAT_IF"] = '{"changes": []}'
     assert deployment.run("publish").returncode != 0
     assert not any(call["args"][:2] == ["acr", "build"] for call in deployment.calls("az"))
+
+
+@pytest.mark.parametrize(
+    ("provision", "use"),
+    [("yes", "false"), ("false", "yes"), ("false", "true")],
+)
+def test_live_database_controls_fail_before_azure(
+    deployment: Deployment,
+    provision: str,
+    use: str,
+) -> None:
+    deployment.env["PROVISION_LIVE_DATABASE"] = provision
+    deployment.env["USE_LIVE_DATABASE"] = use
+
+    result = deployment.run("what-if")
+
+    assert result.returncode != 0
+    assert deployment.calls("az") == []
 
 
 def test_rollback_requires_prior_release_and_never_builds(deployment: Deployment) -> None:

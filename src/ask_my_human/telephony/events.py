@@ -54,6 +54,7 @@ class AcsCallbackEvent:
             answer=answer,
             call_id=self.call_connection_id,
             acs_code=None if self.result_information is None else self.result_information.code,
+            event_id=self.event_id,
         )
 
     def _domain_event_type(self) -> CallEventType | None:

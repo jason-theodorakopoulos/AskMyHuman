@@ -39,6 +39,10 @@ param acsCallbackAudience string
 param acsCallbackUrl string
 @description('Comma-separated public hosts accepted by the MCP transport.')
 param mcpAllowedHosts string
+@description('Provision the isolated database used only by gated live validation.')
+param provisionLiveDatabase bool = false
+@description('Bind this revision to the isolated live database.')
+param useLiveDatabase bool = false
 
 var resourceNamePrefix = 'askmyhuman-${uniqueString(resourceGroup().id)}'
 
@@ -66,6 +70,8 @@ module postgresql 'modules/postgresql.bicep' = {
 		resourceNamePrefix: resourceNamePrefix
 		administratorPassword: postgresAdminPassword
 		databaseName: 'askmyhuman'
+		provisionLiveDatabase: provisionLiveDatabase
+		useLiveDatabase: useLiveDatabase
 		serverVersion: '16'
 	}
 }
@@ -78,6 +84,7 @@ module communications 'modules/communications.bicep' = {
 		existingAcsResourceId: existingAcsResourceId
 		containerIdentityPrincipalId: identity.outputs.principalId
 		containerIdentityResourceId: identity.outputs.identityResourceId
+		logAnalyticsWorkspaceId: observability.outputs.logAnalyticsWorkspaceId
 	}
 }
 
@@ -122,3 +129,5 @@ output deploymentLocation string = location
 output containerAppName string = containerApp.outputs.containerAppName
 output containerAppResourceId string = containerApp.outputs.containerAppResourceId
 output fqdn string = containerApp.outputs.fqdn
+output activeDatabaseName string = postgresql.outputs.databaseName
+output liveDatabaseName string = postgresql.outputs.liveDatabaseName

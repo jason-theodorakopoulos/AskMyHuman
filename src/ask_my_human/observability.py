@@ -194,6 +194,9 @@ class AzureMonitorTelemetry:
         acs_code: int | None = None,
         acs_subcode: int | None = None,
         replay: bool | None = None,
+        call_id: str | None = None,
+        event_id: str | None = None,
+        pending_join: bool | None = None,
     ) -> Iterator[Span]:
         attributes: dict[str, str | int | bool] = {"request_id": str(request_id)}
         optional_attributes: tuple[tuple[str, object | None], ...] = (
@@ -205,6 +208,9 @@ class AzureMonitorTelemetry:
             ("acs_code", acs_code),
             ("acs_subcode", acs_subcode),
             ("replay", replay),
+            ("call_id", call_id),
+            ("event_id", event_id),
+            ("pending_join", pending_join),
         )
         attributes.update(
             (attribute_name, value)
@@ -314,6 +320,11 @@ def configure_observability(*, connection_string: str | None = None) -> AzureMon
             disable_logging=True,
             enable_live_metrics=False,
             enable_performance_counters=False,
-            resource=Resource.create({"service.name": "ask-my-human"}),
+            resource=Resource.create(
+                {
+                    "service.name": "ask-my-human",
+                    "service.instance.id": os.environ.get("CONTAINER_APP_REVISION", "local"),
+                }
+            ),
         )
     return AzureMonitorTelemetry()

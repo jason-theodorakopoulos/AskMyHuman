@@ -255,8 +255,16 @@ class FakeTelemetry:
 
     @contextmanager
     def span(
-        self, operation: TelemetryOperation, *, request_id: UUID, kind: RequestKind | None = None
+        self,
+        operation: TelemetryOperation,
+        *,
+        request_id: UUID,
+        kind: RequestKind | None = None,
+        call_id: str | None = None,
+        event_id: str | None = None,
+        pending_join: bool | None = None,
     ) -> Iterator[None]:
+        del kind, call_id, event_id, pending_join
         self.spans.append((operation, request_id))
         self.active_spans.append(operation)
         try:
