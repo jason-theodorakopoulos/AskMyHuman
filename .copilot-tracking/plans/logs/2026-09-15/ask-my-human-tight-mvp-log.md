@@ -332,6 +332,7 @@ revision state, diagnostic routing, and telemetry retention checks all passed.
   controlled 25-hour terminal row was removed while a current row was retained.
 * The live telemetry privacy audit ran 14 searches over actual sensitive values
   and returned zero matches.
-* Latest-revision application evidence contains the MCP call correlation and
-  accepted callbacks. Independent provider ingestion was still pending at the
-  final query, so authorized review of a refreshed snapshot remains open.
+* Latest-revision MCP evidence contains one independent provider attempt, one app
+  call correlation, and two accepted callbacks. The strict snapshot SHA-256 is
+  `fe3525ce9942d12efd847feef71bc75922f0543deff318a0c99866b4bf5502a4`;
+  authorized exact-byte review remains open.

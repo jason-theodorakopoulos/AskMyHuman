@@ -600,9 +600,11 @@ changing the public contract was not attempted.
   `29cbdee76d1a33ae54d79946b9781e9bbbf9f3a6e236c9d78df1891d06ded94d`.
   It contains two provider attempts, two app correlations, six callback
   deliveries, and zero pending joins. It remains unreviewed.
-* The MCP cancellation has three app observations and a correlated database
-  terminal result. Its provider `CreateCall` row had not arrived at the final
-  query, so it is not yet included in a reviewed independent snapshot.
+* The MCP cancellation has one independent provider attempt, one app call
+  correlation, two accepted callback deliveries, and a correlated database
+  terminal result. Its strict snapshot SHA-256 is
+  `fe3525ce9942d12efd847feef71bc75922f0543deff318a0c99866b4bf5502a4`.
+  The snapshot remains unreviewed.
 
 ## Release Summary
 
