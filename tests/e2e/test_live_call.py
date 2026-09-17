@@ -20,6 +20,7 @@ from uuid import UUID, uuid4
 
 import httpx
 import httpx2
+import psycopg
 import pytest
 from azure.identity import ClientSecretCredential as ClientSecretCredential
 from azure.identity.aio import ClientSecretCredential as AsyncClientSecretCredential
@@ -265,6 +266,33 @@ def _assert_auth_boundary(status: int, expected: set[int]) -> None:
         raise AssertionError("Authentication preflight failed; paid calls are blocked.")
 
 
+def _assert_empty_live_database(database: str) -> None:
+    try:
+        with psycopg.connect(
+            database,
+            connect_timeout=10,
+            autocommit=True,
+            options="-c default_transaction_read_only=on -c statement_timeout=10000",
+        ) as connection:
+            row = connection.execute(
+                "SELECT current_database(), EXISTS (SELECT 1 FROM human_requests)"
+            ).fetchone()
+        if (
+            row is None
+            or len(row) != 2
+            or not isinstance(row[0], str)
+            or not row[0].strip()
+            or row[0].casefold()
+            in {"askmyhuman", "ask_my_human", "postgres", "template0", "template1"}
+            or row[1] is not False
+        ):
+            raise ValueError
+    except Exception:
+        raise AssertionError(
+            "Live database must be empty and non-default (details suppressed)."
+        ) from None
+
+
 @pytest.fixture(scope="session", autouse=True)
 def live_preflight(
     live_approval: _Approval,
@@ -273,6 +301,7 @@ def live_preflight(
 ) -> _Approval:
     try:
         _read_evidence(live_approval)
+        _assert_empty_live_database(_required_env("DATABASE_URL"))
         with (
             ClientSecretCredential(
                 tenant_id=_required_env("LIVE_AGENT_TENANT_ID"),

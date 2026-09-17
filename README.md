@@ -370,6 +370,22 @@ These approval and deployment JSON values are validated by
 mismatched evidence blocks calls. Each test docstring specifies the scenario
 setup; privacy checks also require the configured sensitive sentinel inputs.
 
+At the start of each pytest session, preflight checks `DATABASE_URL` with a
+read-only PostgreSQL query and 10-second connection and statement timeouts.
+It rejects existing `human_requests` rows, a missing request table, and the default
+`askmyhuman` / `ask_my_human` or PostgreSQL system databases. It never creates,
+clears, or switches a database. Migrate the dedicated live database before the
+run. Before another pytest invocation, archive the previous evidence and prepare
+an empty approved test database again; never clear the normal application
+database to satisfy this check. Tests within one invocation may create rows.
+
+This is a safety check, not proof of isolation. The operator must still approve
+the exact connection-string fingerprint and isolation, bind the verified
+revision to that database, exclude unrelated traffic, and restore the original
+configuration with a healthy revision afterward. Reviewed exports and carrier
+arrangements remain required. Passing offline tests does not complete Phase 5A
+or authorize the Step 5.3 paid-call matrix.
+
 ### Live Evidence Exports
 
 [scripts/harvest_live_evidence.py](scripts/harvest_live_evidence.py) is a read-only

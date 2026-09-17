@@ -490,3 +490,37 @@ resource group `rg-askmyhuman`, region `swedencentral`. Step 5.3 remains open.
 * Do not mark Phase 5A or Step 5.3 complete, claim a merge-ready gate, or treat
   documentation and offline tests as Azure or live acceptance. No Azure resource
   mutation, paid call, commit, push, or PR was performed in this work.
+
+## Phase 5A Database Safety Follow-Up: 2026-09-17
+
+* Reviewed the current main-branch plan and the revised Step 5A.1 through 5A.4
+  details. PR #9 is merged at `b965033`; its CI run `35146938736` completed
+  successfully. That verifies the repository gates, not deployed evidence or
+  paid-call acceptance. All four 5A checkboxes and Step 5.3 remain open.
+* Found a Step 5A.3 safety gap: the harness validated the approved database
+  fingerprint and isolation flag but did not check initial database contents.
+  Added a session-level read-only preflight check before the telemetry queries
+  and authentication probes. Existing request rows, default application/system
+  databases, unexpected query results, and connection/query failures block
+  execution. Connection and statement timeouts are 10 seconds; errors suppress
+  database details. The check never provisions, clears, or changes a database.
+* Added credential-free regressions for valid empty databases, unsafe/malformed
+  results, resource cleanup, failure privacy, and gating before cloud queries.
+  Windows-compatible harness tests pass: 148 passed, 23 existing Bash verifier
+  cases deselected. Focused mypy passes for both changed Python files. The PR's
+  Linux CI must run the full unchanged gates, including those verifier cases.
+* Updated the runbook for initial emptiness, repeated test invocations, and the
+  limits of the check. Existing `DATABASE_URL` naming is unchanged; no runtime
+  settings, credentials, deployment inputs, or public contracts were added.
+
+| Step | Merged/offline support | Remaining acceptance evidence |
+| --- | --- | --- |
+| 5A.1 | Scoped ACS diagnostics module and workspace wiring | Target category/content review, approved what-if/deployment, and provider rows from authorized activity |
+| 5A.2 | Read-only bounded snapshot harvester, strict review contract, and tests | Actual scoped exports and authorized hash-bound reviews against the target workspace |
+| 5A.3 | Approved database/revision bindings and this initial-empty-database guard | Provision and migrate the dedicated database, bind the verified revision, review sampling/exports, and restore a healthy original configuration |
+| 5A.4 | Per-scenario operator-record gate and forced-deadline opt-in | Human/carrier arrangements, confirmed outbound routing, and written approval for unsupported busy/decline limitations |
+
+The target deployment/release operator owns those live actions and approvals.
+Phase 5A completion remains separate from the Step 5.3 paid-call matrix and
+Phase 6 final validation. No Azure resource was changed and no call was placed
+by this follow-up.

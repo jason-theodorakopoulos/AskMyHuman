@@ -592,6 +592,105 @@ def test_approval_checks_opt_in_before_reading_evidence(monkeypatch: pytest.Monk
     reader.assert_not_called()
 
 
+@pytest.fixture
+def database_connect(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
+    connect = MagicMock()
+    connection = connect.return_value.__enter__.return_value
+    connection.execute.return_value.fetchone.return_value = ("askmyhuman_live", False)
+    monkeypatch.setattr("psycopg.connect", connect)
+    return connect
+
+
+def test_database_preflight_uses_bounded_read_only_check(database_connect: MagicMock) -> None:
+    harness._assert_empty_live_database("dummy-dsn")
+
+    database_connect.assert_called_once_with(
+        "dummy-dsn",
+        connect_timeout=10,
+        autocommit=True,
+        options="-c default_transaction_read_only=on -c statement_timeout=10000",
+    )
+    connection = database_connect.return_value.__enter__.return_value
+    connection.execute.assert_called_once_with(
+        "SELECT current_database(), EXISTS (SELECT 1 FROM human_requests)"
+    )
+    database_connect.return_value.__exit__.assert_called_once_with(None, None, None)
+
+
+@pytest.mark.parametrize(
+    "row",
+    [
+        ("askmyhuman_live", True),
+        ("askmyhuman", False),
+        ("ASKMYHUMAN", False),
+        ("ask_my_human", False),
+        ("postgres", False),
+        ("template0", False),
+        ("template1", False),
+        None,
+        (),
+        ("askmyhuman_live",),
+        ("askmyhuman_live", False, "unexpected"),
+        (None, False),
+        (" ", False),
+        ("askmyhuman_live", 0),
+        ("askmyhuman_live", "false"),
+    ],
+)
+def test_database_preflight_rejects_unsafe_or_invalid_state(
+    database_connect: MagicMock, row: tuple[object, ...] | None
+) -> None:
+    connection = database_connect.return_value.__enter__.return_value
+    connection.execute.return_value.fetchone.return_value = row
+
+    with pytest.raises(AssertionError, match="empty and non-default"):
+        harness._assert_empty_live_database("dummy-dsn")
+
+    database_connect.return_value.__exit__.assert_called_once()
+
+
+@pytest.mark.parametrize("stage", ["connect", "query", "result", "close"])
+def test_database_preflight_suppresses_connection_details(
+    database_connect: MagicMock, stage: str
+) -> None:
+    secret = "postgresql://operator:private-sentinel@database.invalid/live"
+    connection = database_connect.return_value.__enter__.return_value
+    operation = {
+        "connect": database_connect,
+        "query": connection.execute,
+        "result": connection.execute.return_value.fetchone,
+        "close": database_connect.return_value.__exit__,
+    }[stage]
+    operation.side_effect = RuntimeError(secret)
+
+    with pytest.raises(AssertionError, match="details suppressed") as failure:
+        harness._assert_empty_live_database(secret)
+
+    assert secret not in str(failure.value)
+    assert failure.value.__suppress_context__ is True
+    if stage != "connect":
+        database_connect.return_value.__exit__.assert_called_once()
+
+
+def test_preflight_rejects_populated_database_before_network(
+    monkeypatch: pytest.MonkeyPatch, database_connect: MagicMock
+) -> None:
+    approval, _ = _evidence()
+    parsed = harness._Approval.model_validate_json(json.dumps(approval))
+    connection = database_connect.return_value.__enter__.return_value
+    connection.execute.return_value.fetchone.return_value = ("askmyhuman_live", True)
+    credential = MagicMock(side_effect=AssertionError("Cloud access must remain blocked."))
+    monkeypatch.setattr(harness, "_read_evidence", MagicMock())
+    monkeypatch.setattr(harness, "_required_env", MagicMock(return_value="dummy-dsn"))
+    monkeypatch.setattr(harness, "ClientSecretCredential", credential)
+
+    with pytest.raises(pytest.fail.Exception, match="preflight failed"):
+        inspect.unwrap(harness.live_preflight)(parsed, "dummy-access", None)
+
+    database_connect.assert_called_once()
+    credential.assert_not_called()
+
+
 async def test_pending_gate_rejects_already_completed_request(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -638,6 +737,7 @@ def test_preflight_uses_cost_free_dummy_requests(
     authorized_status: int,
     authorized_code: str,
     invalid_request_response: httpx.Response,
+    database_connect: MagicMock,
 ) -> None:
     approval, _ = _evidence()
     parsed = harness._Approval.model_validate_json(json.dumps(approval))
@@ -686,6 +786,7 @@ def test_preflight_uses_cost_free_dummy_requests(
     else:
         with pytest.raises(pytest.fail.Exception, match="preflight failed"):
             preflight(parsed, "dummy-access", None)
+    database_connect.assert_called_once()
     assert calls
     for request in calls:
         if request.method == "POST":
