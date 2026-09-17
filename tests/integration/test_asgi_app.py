@@ -524,6 +524,7 @@ async def test_mcp_transport_is_mounted_without_shadowing_http_routes(
             headers={
                 "Content-Type": "application/json",
                 "Accept": "application/json, text/event-stream",
+                "x-ms-client-principal": principal_header(),
             },
             json={
                 "jsonrpc": "2.0",
@@ -573,6 +574,10 @@ async def test_mounted_mcp_enforces_the_http_authorization_boundary(
                 },
             },
         )
+        if identity != "authorized":
+            assert initialized.status_code == (401 if identity == "missing" else 403)
+            assert composition.use_case.requests == []
+            return
         headers["mcp-session-id"] = initialized.headers["mcp-session-id"]
         headers["mcp-protocol-version"] = "2025-06-18"
         await client.post(
@@ -605,11 +610,6 @@ async def test_mounted_mcp_enforces_the_http_authorization_boundary(
     if identity == "authorized":
         assert composition.use_case.requests[0][0].application_id == AGENT_APP_ID
         assert composition.use_case.requests[0][0].subject_id == "agent-object-id"
-    else:
-        assert composition.use_case.requests == []
-        assert result["structuredContent"]["code"] == (
-            "unauthenticated" if identity == "missing" else "forbidden"
-        )
 
 
 @pytest.mark.asyncio

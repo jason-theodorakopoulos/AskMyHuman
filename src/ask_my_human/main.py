@@ -14,6 +14,7 @@ from azure.communication.callautomation.aio import CallAutomationClient
 from azure.identity.aio import DefaultAzureCredential
 from fastapi import FastAPI, Request
 from mcp.server.transport_security import TransportSecuritySettings
+from starlette.responses import JSONResponse
 
 from ask_my_human.api.callbacks import create_callbacks_router
 from ask_my_human.api.health import PoolState, create_readiness_router, liveness_router
@@ -24,6 +25,7 @@ from ask_my_human.application.ports import AskHumanUseCase, Telemetry
 from ask_my_human.application.service import AskHumanService
 from ask_my_human.config import Settings
 from ask_my_human.domain.models import CallEvent, Principal
+from ask_my_human.errors import AskMyHumanError, ErrorCode
 from ask_my_human.mcp_adapter.server import create_mcp_server
 from ask_my_human.observability import configure_observability, instrument_app
 from ask_my_human.persistence.pool import PostgresPool
@@ -218,6 +220,27 @@ def create_app(components: ApplicationComponents | None = None) -> FastAPI:
         openapi_url=None,
         lifespan=lifespan,
     )
+
+    @app.middleware("http")
+    async def authenticate_mcp(
+        request: Request, call_next: Callable[[Request], Awaitable[Any]]
+    ) -> Any:
+        if request.url.path == "/mcp" or request.url.path.startswith("/mcp/"):
+            try:
+                await authenticate(request)
+            except AskMyHumanError as error:
+                status_code = 403 if error.code is ErrorCode.FORBIDDEN else 401
+                return JSONResponse(
+                    status_code=status_code,
+                    content={
+                        "requestId": None,
+                        "code": error.code.value,
+                        "message": error.message,
+                        "retryable": error.retryable,
+                    },
+                )
+        return await call_next(request)
+
     app.include_router(liveness_router)
     app.include_router(create_readiness_router(settings, resolved.pool_state, maintenance_ready))
     app.include_router(create_oauth_metadata_router(settings))
