@@ -299,6 +299,9 @@ resource authConfig 'Microsoft.App/containerApps/authConfigs@2024-03-01' = {
     globalValidation: {
       excludedPaths: [
         '/v1/callbacks/acs'
+        '/v1/requests'
+        '/mcp'
+        '/mcp/*'
       ]
       unauthenticatedClientAction: 'Return401'
     }
