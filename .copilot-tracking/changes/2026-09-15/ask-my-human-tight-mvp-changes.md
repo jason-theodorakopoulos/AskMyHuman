@@ -490,3 +490,46 @@ resource group `rg-askmyhuman`, region `swedencentral`. Step 5.3 remains open.
 * Do not mark Phase 5A or Step 5.3 complete, claim a merge-ready gate, or treat
   documentation and offline tests as Azure or live acceptance. No Azure resource
   mutation, paid call, commit, push, or PR was performed in this work.
+
+## Phase 5A Azure Verification: 2026-09-17
+
+### Verified
+
+* The deployed revision `askmyhuman--b5a16f2ff092-6ab2ba862308` is active,
+  healthy, and running one replica at 100 percent traffic.
+* The isolated `askmyhuman_live` database is active at migration
+  `20260916_0002` and contains one `responded/approved` row and one
+  `expired/no_answer` row.
+* Independent provider evidence contains two successful `CreateCall` results.
+  Both provider call identifiers reconcile to content-free application call
+  correlations from the same revision.
+* The read-only harvester emitted a strict two-call snapshot with two provider
+  attempts, two correlations, six callback receipts, and zero pending joins.
+  The snapshot SHA-256 is
+  `ea89a0f68bcdc2770a0cf9afa692b148bfcbb3cf72306992ffe37f761d362795`.
+* Exact replay of request `81bb922c-bc0c-4f60-9fd5-99d5f272dee7` returned the
+  original `responded/approved` result without creating a second row.
+
+### Modified
+
+* infra/modules/communications-acs-diagnostics.bicep - Enables the
+  target-supported `CallDiagnostics` category for carrier and media evidence.
+
+### Validation
+
+* Evidence and live-harness focused suite passed with 206 tests.
+* The full Bicep composition compiled with all three ACS diagnostic categories.
+* Application Insights is workspace-based with 30-day retention, no configured
+  ingestion sampling percentage, and `ItemCount=1` on evidence observations.
+* `git diff --check` and editor diagnostics passed.
+
+### Remaining Gates
+
+* The exported snapshot has no authorized exact-byte review and does not claim
+  global ingestion completeness. Bounded late-arrival risk remains.
+* `ACSCallSummary` had no rows at verification time. The `CallDiagnostics`
+  source change still requires gated deployment and ingestion verification.
+* Silence, rejection, free-form answer, busy, decline, mid-call disconnect,
+  forced deadline, and initiating-client cancellation remain untested.
+* Request `4745f499-fdcd-443a-b2ff-c80abe4c5dc6` proves natural no-answer only.
+  Its observer failed before cancellation, so it is not cancellation evidence.

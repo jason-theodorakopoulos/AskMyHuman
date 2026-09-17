@@ -250,12 +250,19 @@ builds the missing evidence sources and authorizes no paid call.
 
 * [ ] Step 5A.1: Route Communication Services call automation and summary logs to the Log Analytics workspace.
   * Details: .copilot-tracking/details/2026-09-15/ask-my-human-tight-mvp-details.md (Lines 1158-1190)
-* [ ] Step 5A.2: Build a read-only provider evidence harvester that emits harness-valid attempt, delivery, and pending-join exports.
+  * Partial 2026-09-17: `CallAutomationOperational` and `CallSummary` are deployed;
+    provider `CreateCall` rows ingest successfully. `CallDiagnostics` is implemented
+    and locally validated but still requires gated deployment and ingestion verification.
+* [x] Step 5A.2: Build a read-only provider evidence harvester that emits harness-valid attempt, delivery, and pending-join exports.
   * Details: .copilot-tracking/details/2026-09-15/ask-my-human-tight-mvp-details.md (Lines 1191-1222)
 * [ ] Step 5A.3: Provision the isolated live database and emit the telemetry export watermark.
   * Details: .copilot-tracking/details/2026-09-15/ask-my-human-tight-mvp-details.md (Lines 1223-1246)
+  * Partial 2026-09-17: `askmyhuman_live` is active at migration `20260916_0002`;
+    the strict two-call snapshot is exported but has no authorized exact-byte review.
 * [ ] Step 5A.4: Arrange and record carrier scenario setup, or approve unsupported cases as release limitations.
   * Details: .copilot-tracking/details/2026-09-15/ask-my-human-tight-mvp-details.md (Lines 1247-1269)
+  * Partial 2026-09-17: outbound routing and natural no-answer are verified. Human
+    arrangements or written limitations remain required for the other carrier cases.
 
 ### [ ] Implementation Phase 6: Final Validation And Release Handoff
 

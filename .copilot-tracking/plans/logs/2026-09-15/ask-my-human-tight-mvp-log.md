@@ -257,3 +257,36 @@ and DD-02 remain intentional, research-backed decisions.
     and they carry call metadata rather than prompt or spoken answer content. Enabling
     `azure_sdk` or `httpx` instrumentation would weaken evidence independence and risk
     recording request URLs into telemetry that the privacy scenario audits.
+
+## Phase 5A Azure Evidence Record: 2026-09-17
+
+### Resolved Research Items
+
+* DR-13: Independent provider evidence is now available from
+  `ACSCallAutomationIncomingOperations`.
+  * Resolution: Two successful `CreateCall` rows reconcile to two hashed
+    application call correlations from the deployed revision.
+  * Residual risk: The reviewed bounded snapshot must explicitly accept late-arrival
+    risk; this does not establish global ingestion completeness.
+* DR-14: The harvester and isolated database binding are operational.
+  * Resolution: `askmyhuman_live` is active at migration `20260916_0002`, and a
+    strict two-call snapshot was generated with SHA-256
+    `ea89a0f68bcdc2770a0cf9afa692b148bfcbb3cf72306992ffe37f761d362795`.
+  * Remaining gate: An authorized reviewer has not bound the exact snapshot bytes.
+
+### Implementation Deviations
+
+* DD-12: Enable `CallDiagnostics` in addition to the originally deployed categories.
+  * Plan specifies: Enable the category when the target resource exposes it.
+  * Implementation differs: The first deployment enabled only
+    `CallAutomationOperational` and `CallSummary`; target discovery later confirmed
+    `CallDiagnostics` support.
+  * Rationale: The additional content-free provider category can improve evidence
+    for silence, ring-out, and disconnect scenarios without application SDK tracing.
+
+### Open Release Evidence
+
+* DR-15 remains open for silence, busy, decline, mid-call disconnect, forced
+  deadline, and cancellation arrangements or written release limitations.
+* The successful approval confirms outbound routing. The natural ring-out confirms
+  no-answer only; it does not confirm initiating-client cancellation.
