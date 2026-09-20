@@ -25,6 +25,8 @@ the agent can act on. Use it for decisions such as approving a deployment,
 confirming a sensitive action, or answering a question that requires human
 context.
 
+![AskMyHuman architecture](Screenshot%202026-09-20%20091407.png)
+
 ## How it works
 
 1. An agent calls the `ask_human` MCP tool or sends `POST /v1/requests`.
